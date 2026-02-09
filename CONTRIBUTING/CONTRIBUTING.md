@@ -1,4 +1,4 @@
-# Contributing to Axiom 3D Pipeline
+# Contributing to 3D Pipeline
 
 Thank you for helping build better Pathfinder 2e tokens! To ensure compatibility with Foundry VTT and the 3D Canvas module, please adhere to these standards:
 
