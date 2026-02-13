@@ -107,12 +107,37 @@ def run_pipeline():
 
     profile = config['profiles'][profile_key]
 
+    # Override Vertex/Texture Prompts
+    target_v = profile['target_v']
+    max_res = profile['res']
+
+    print(f"\n✅ Selected: {profile_key}")
+    print(f"   Target Vertices: {target_v}")
+    print(f"   Max Resolution: {max_res}px")
+
+    override = input("\nPress Enter to use defaults, or type 'edit' to change values: ").strip().lower()
+    if override == 'edit':
+        try:
+            v_input = input(f"Enter new Target Vertex Count (current: {target_v}): ").strip()
+            if v_input:
+                target_v = int(v_input)
+
+            res_input = input(f"Enter new Max Texture Resolution (current: {max_res}): ").strip()
+            if res_input:
+                max_res = int(res_input)
+
+            print(f"👉 New Settings: {target_v} verts, {max_res}px")
+        except ValueError:
+            print("❌ Invalid number entered. Using defaults.")
+            target_v = profile['target_v']
+            max_res = profile['res']
+
     # Determine Files
     files = []
     if mode == "single":
         filename = args.input
         if not filename:
-             filename = input("Filename (in source/exports/): ").strip()
+             filename = input("\nFilename (in source/exports/): ").strip()
 
         if not filename.endswith(".glb"):
             filename += ".glb"
@@ -125,7 +150,7 @@ def run_pipeline():
         print("No files to process.")
         return
 
-    print(f"\n🚀 Starting processing for {len(files)} files with profile '{profile_key}'...")
+    print(f"\n🚀 Starting processing for {len(files)} files...")
 
     for f in files:
         input_path = os.path.join(source_dir, f)
@@ -155,7 +180,8 @@ def run_pipeline():
             blender_exe, "--background", "--python", blender_worker, "--",
             "--input", input_path,
             "--output", temp_out,
-            "--target", str(profile['target_v']),
+            "--target", str(target_v),
+            "--maxtex", str(max_res),
             "--normalize", str(profile['norm']),
             "--matte", str(profile['matte'])
         ]

@@ -25,6 +25,17 @@ def check_non_manifold(obj):
     bpy.ops.object.mode_set(mode='OBJECT')
     return is_non_manifold
 
+def resize_textures(max_res):
+    """
+    Iterates through all images in the blend file and scales them down
+    if they exceed the max_res dimension.
+    """
+    print(f"Checking textures against max resolution: {max_res}px")
+    for img in bpy.data.images:
+        if img.size[0] > max_res or img.size[1] > max_res:
+            print(f"Resizing {img.name} ({img.size[0]}x{img.size[1]}) -> {max_res}px")
+            img.scale(max_res, max_res)
+
 def process():
     # Parse arguments after "--"
     try:
@@ -121,13 +132,17 @@ def process():
             active_obj.scale = (scale_factor, scale_factor, scale_factor)
             bpy.ops.object.transform_apply(scale=True)
 
+    # 7. TEXTURE RESIZING
+    if args.maxtex > 0:
+        resize_textures(args.maxtex)
+
     # AGENTS.md Rule 4: Foundry Compatibility - Normals Consistent
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # 7. EXPORT FOR MESHOPT
+    # 8. EXPORT FOR MESHOPT
     bpy.ops.export_scene.gltf(filepath=args.output, export_format='GLB', export_apply=True)
 
 if __name__ == "__main__":
