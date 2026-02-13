@@ -5,11 +5,30 @@ import shutil
 import argparse
 import sys
 
+def is_frozen():
+    return getattr(sys, 'frozen', False)
+
+def get_base_dir():
+    if is_frozen():
+        return os.path.dirname(sys.executable)
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+
+def get_script_dir():
+    if is_frozen():
+        # In PyInstaller, bundled files are in sys._MEIPASS
+        if hasattr(sys, '_MEIPASS'):
+            return sys._MEIPASS
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
 def load_config():
-    config_path = os.path.join(os.path.dirname(__file__), '..', 'axiom_config.json')
+    base_dir = get_base_dir()
+    config_path = os.path.join(base_dir, 'axiom_config.json')
     config_path = os.path.normpath(config_path)
 
     if not os.path.exists(config_path):
+        # Fallback: Check if config is bundled (e.g. for defaults)
+        # But we prefer the one next to the exe.
         print(f"❌ Error: Config file not found at {config_path}")
         return None
 
@@ -31,9 +50,11 @@ def run_pipeline():
 
     config = load_config()
     if not config:
+        # Prompt user to create one or exit?
+        input("Press Enter to exit...")
         return
 
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+    root_dir = get_base_dir()
     paths = config['paths']
 
     # Resolve paths
@@ -49,9 +70,6 @@ def run_pipeline():
         os.makedirs(d, exist_ok=True)
 
     if not os.path.exists(source_dir):
-         # Create it if it doesn't exist? The instructions say "Source Acquisition... Place raw files in..."
-         # But the pipeline reads from source/exports.
-         # I'll create it to avoid immediate crashes if the user runs it on a fresh repo.
          try:
              os.makedirs(source_dir, exist_ok=True)
          except OSError:
@@ -109,9 +127,17 @@ def run_pipeline():
         print(f"🔹 Processing: {f}")
 
         # Blender Pass
-        # We need to call blender_worker.py. It is in the same directory as this script.
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # Locate the bundled or relative blender_worker.py
+        script_dir = get_script_dir()
         blender_worker = os.path.join(script_dir, "blender_worker.py")
+
+        if not os.path.exists(blender_worker):
+             # Try fallback: maybe we are running script directly but get_script_dir pointed somewhere else?
+             # But if is_frozen is false, get_script_dir points to script dir.
+             # If is_frozen is true, sys._MEIPASS should have it.
+             print(f"❌ Error: blender_worker.py not found at {blender_worker}")
+             input("Press Enter to exit...")
+             return
 
         blender_cmd = [
             blender_exe, "--background", "--python", blender_worker, "--",
