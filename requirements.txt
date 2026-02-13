@@ -1,0 +1,5 @@
+# This is a locked dependency file with SHA256 hashes.
+# Every dependency must be pinned and include at least one --hash.
+# Example:
+# some-package==1.2.3 \
+#     --hash=sha256:abcdef...
