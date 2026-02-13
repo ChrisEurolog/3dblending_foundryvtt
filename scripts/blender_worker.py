@@ -103,12 +103,12 @@ def process():
                 if bsdf:
                     # Handle Blender version differences for property names
                     if 'Coat Weight' in bsdf.inputs:
-                        bsdf.inputs['Coat Weight'].default_value = 0.2
+                        bsdf.inputs['Coat Weight'].default_value = 0.05 # Was 0.2, then 0.0, now 0.05 for subtle shine
                     elif 'Coat' in bsdf.inputs:
-                        bsdf.inputs['Coat'].default_value = 0.2
+                        bsdf.inputs['Coat'].default_value = 0.05 # Was 0.2, then 0.0, now 0.05 for subtle shine
 
                     if 'Roughness' in bsdf.inputs:
-                        bsdf.inputs['Roughness'].default_value = 0.5
+                        bsdf.inputs['Roughness'].default_value = 0.8 # Was 0.5
 
                     if 'Subsurface Weight' in bsdf.inputs:
                         bsdf.inputs['Subsurface Weight'].default_value = 0.0
