@@ -86,8 +86,20 @@ def run_pipeline():
     # Determine Profile
     profile_key = args.profile
     if not profile_key:
-        print("Available Profiles: " + ", ".join(config['profiles'].keys()))
-        profile_key = input("Profile: ").strip()
+        print("\nAvailable Profiles:")
+        profile_options = list(config['profiles'].items())
+
+        for idx, (name, details) in enumerate(profile_options, 1):
+            print(f"[{idx}] {name} ({details['target_v']} verts, {details['res']}px)")
+
+        while True:
+            selection = input(f"Select Profile [1-{len(profile_options)}]: ").strip()
+            if selection.isdigit():
+                idx = int(selection) - 1
+                if 0 <= idx < len(profile_options):
+                    profile_key = profile_options[idx][0]
+                    break
+            print("❌ Invalid selection. Please try again.")
 
     if profile_key not in config['profiles']:
         print(f"❌ Error: Invalid profile '{profile_key}'")
@@ -113,7 +125,7 @@ def run_pipeline():
         print("No files to process.")
         return
 
-    print(f"🚀 Starting processing for {len(files)} files with profile '{profile_key}'...")
+    print(f"\n🚀 Starting processing for {len(files)} files with profile '{profile_key}'...")
 
     for f in files:
         input_path = os.path.join(source_dir, f)
