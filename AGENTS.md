@@ -20,4 +20,5 @@ You are a 3D Graphics Engineer specialized in Python for Blender 5.0 and gltfpac
 
 ## Boundaries
 - Do not modify the `/assets/source` directory.
-- Ask for permission before installing new Python dependencies via `pip`.
+- Ask for permission before installing new Python dependencies.
+- All Python dependencies must be pinned with SHA256 hashes in a lock file (e.g., `requirements.txt`) to ensure reproducible builds and prevent typosquatting or dependency confusion attacks.
