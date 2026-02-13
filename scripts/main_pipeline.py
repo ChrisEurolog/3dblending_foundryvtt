@@ -203,7 +203,8 @@ def run_pipeline():
                  print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
                  shutil.copy(temp_out, final_out)
             else:
-                meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-cc"]
+                # Use safer compression for Foundry VTT (-c for compression, NO -cc for custom compression class)
+                meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-c"]
                 try:
                     subprocess.run(meshopt_cmd, check=True)
                 except subprocess.CalledProcessError as e:
