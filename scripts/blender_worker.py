@@ -74,10 +74,10 @@ def process():
     active_obj = bpy.context.view_layer.objects.active
 
     # Glue: Merge by Distance to remove doubles and prevent tearing
-    # This replaces Voxel Remesh which destroys UVs
+    # Increased threshold to 0.005 (5mm) to aggressively fix gaps
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.001) # 1mm threshold
+    bpy.ops.mesh.remove_doubles(threshold=0.005)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # AGENTS.md Rule 2: Check for non-manifold geometry
@@ -103,9 +103,9 @@ def process():
                 if bsdf:
                     # Handle Blender version differences for property names
                     if 'Coat Weight' in bsdf.inputs:
-                        bsdf.inputs['Coat Weight'].default_value = 0.05 # Was 0.2, then 0.0, now 0.05 for subtle shine
+                        bsdf.inputs['Coat Weight'].default_value = 0.01 # Was 0.05, now 0.01 for minimal shine
                     elif 'Coat' in bsdf.inputs:
-                        bsdf.inputs['Coat'].default_value = 0.05 # Was 0.2, then 0.0, now 0.05 for subtle shine
+                        bsdf.inputs['Coat'].default_value = 0.01 # Was 0.05, now 0.01 for minimal shine
 
                     if 'Roughness' in bsdf.inputs:
                         bsdf.inputs['Roughness'].default_value = 0.8 # Was 0.5
