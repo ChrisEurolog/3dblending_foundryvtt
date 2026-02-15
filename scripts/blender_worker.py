@@ -142,7 +142,8 @@ def process():
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # 8. EXPORT FOR MESHOPT
+    # 8. SHADE SMOOTH & EXPORT
+    bpy.ops.object.shade_smooth()
     bpy.ops.export_scene.gltf(filepath=args.output, export_format='GLB', export_apply=True)
 
 if __name__ == "__main__":
