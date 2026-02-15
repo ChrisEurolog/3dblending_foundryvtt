@@ -74,10 +74,10 @@ def process():
     active_obj = bpy.context.view_layer.objects.active
 
     # Glue: Merge by Distance to remove doubles and prevent tearing
-    # Increased threshold to 0.005 (5mm) to aggressively fix gaps
+    # Reduced threshold to 0.002 (2mm) to fix jagged artifacts from over-merging
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.005)
+    bpy.ops.mesh.remove_doubles(threshold=0.002)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # AGENTS.md Rule 2: Check for non-manifold geometry
@@ -103,12 +103,12 @@ def process():
                 if bsdf:
                     # Handle Blender version differences for property names
                     if 'Coat Weight' in bsdf.inputs:
-                        bsdf.inputs['Coat Weight'].default_value = 0.01 # Was 0.05, now 0.01 for minimal shine
+                        bsdf.inputs['Coat Weight'].default_value = 0.01 # Minimal shine (0.01)
                     elif 'Coat' in bsdf.inputs:
-                        bsdf.inputs['Coat'].default_value = 0.01 # Was 0.05, now 0.01 for minimal shine
+                        bsdf.inputs['Coat'].default_value = 0.01 # Minimal shine (0.01)
 
                     if 'Roughness' in bsdf.inputs:
-                        bsdf.inputs['Roughness'].default_value = 0.8 # Was 0.5
+                        bsdf.inputs['Roughness'].default_value = 0.8 # Matte base (0.8)
 
                     if 'Subsurface Weight' in bsdf.inputs:
                         bsdf.inputs['Subsurface Weight'].default_value = 0.0
