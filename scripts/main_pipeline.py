@@ -4,25 +4,26 @@ import subprocess
 import shutil
 import argparse
 import sys
+from collections import namedtuple
 
-def is_frozen():
-    return getattr(sys, 'frozen', False)
+AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
 
-def get_base_dir():
-    if is_frozen():
-        return os.path.dirname(sys.executable)
-    return os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-
-def get_script_dir():
-    if is_frozen():
+def get_app_paths():
+    """
+    Consolidated path resolution for frozen (PyInstaller) and dev environments.
+    Returns a named tuple with 'base' and 'scripts' paths.
+    """
+    if getattr(sys, 'frozen', False):
         # In PyInstaller, bundled files are in sys._MEIPASS
-        if hasattr(sys, '_MEIPASS'):
-            return sys._MEIPASS
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.dirname(sys.executable)
+        script_dir = getattr(sys, '_MEIPASS', base_dir)
+    else:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.abspath(os.path.join(script_dir, '..'))
 
-def load_config():
-    base_dir = get_base_dir()
+    return AppPaths(base=base_dir, scripts=script_dir)
+
+def load_config(base_dir):
     config_path = os.path.join(base_dir, 'axiom_config.json')
     config_path = os.path.normpath(config_path)
 
@@ -48,13 +49,14 @@ def run_pipeline():
     parser.add_argument("--input", help="Input filename (for single mode)")
     args = parser.parse_args()
 
-    config = load_config()
+    app_paths = get_app_paths()
+    config = load_config(app_paths.base)
     if not config:
         # Prompt user to create one or exit?
         input("Press Enter to exit...")
         return
 
-    root_dir = get_base_dir()
+    root_dir = app_paths.base
     paths = config['paths']
 
     # Resolve paths
@@ -165,13 +167,13 @@ def run_pipeline():
 
         # Blender Pass
         # Locate the bundled or relative blender_worker.py
-        script_dir = get_script_dir()
+        script_dir = app_paths.scripts
         blender_worker = os.path.join(script_dir, "blender_worker.py")
 
         if not os.path.exists(blender_worker):
-             # Try fallback: maybe we are running script directly but get_script_dir pointed somewhere else?
-             # But if is_frozen is false, get_script_dir points to script dir.
-             # If is_frozen is true, sys._MEIPASS should have it.
+             # Try fallback: maybe we are running script directly but get_app_paths pointed somewhere else?
+             # But if is_frozen is false, app_paths.scripts points to script dir.
+             # If is_frozen is true, sys._MEIPASS (or base_dir) should have it.
              print(f"❌ Error: blender_worker.py not found at {blender_worker}")
              input("Press Enter to exit...")
              return
