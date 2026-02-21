@@ -141,6 +141,9 @@ def run_pipeline():
         if not filename:
              filename = input("\nFilename (in source/exports/): ").strip()
 
+        # Security Fix: Prevent path traversal by ensuring only the filename is used
+        filename = os.path.basename(filename)
+
         if not filename.endswith(".glb"):
             filename += ".glb"
 
