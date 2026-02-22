@@ -51,7 +51,7 @@ def process():
     bpy.ops.object.delete()
     if not os.path.exists(args.input):
         print(f"Error: Input file {args.input} does not exist.")
-        return
+        sys.exit(1)
 
     bpy.ops.import_scene.gltf(filepath=args.input)
 
