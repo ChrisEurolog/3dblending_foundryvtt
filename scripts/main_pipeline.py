@@ -34,7 +34,11 @@ def load_config(base_dir):
         return None
 
     with open(config_path) as f:
-        config = json.load(f)
+        try:
+            config = json.load(f)
+        except json.JSONDecodeError:
+            print(f"❌ Error: Config file at {config_path} is not valid JSON.")
+            return None
     return config
 
 def resolve_path(path, root_dir):
