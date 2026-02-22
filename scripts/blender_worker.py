@@ -7,6 +7,9 @@ import json
 import struct
 import urllib.parse
 
+# Constants
+MERGE_THRESHOLD = 0.002
+
 def is_safe_uri(uri):
     """
     Checks if a URI is safe.
@@ -219,7 +222,7 @@ def process():
     # Reduced threshold to 0.002 (2mm) to fix jagged artifacts from over-merging
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.002)
+    bpy.ops.mesh.remove_doubles(threshold=MERGE_THRESHOLD)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # AGENTS.md Rule 2: Check for non-manifold geometry
