@@ -3,6 +3,7 @@ import json
 import subprocess
 import shutil
 import argparse
+import tempfile
 import sys
 from collections import namedtuple
 
@@ -163,69 +164,72 @@ def run_pipeline():
              print(f"⚠️ Warning: File not found: {input_path}")
              continue
 
-        temp_out = os.path.join(temp_dir, f)
-        final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
-
-        print(f"🔹 Processing: {f}")
-
-        # Blender Pass
-        # Locate the bundled or relative blender_worker.py
-        script_dir = app_paths.scripts
-        blender_worker = os.path.join(script_dir, "blender_worker.py")
-
-        if not os.path.exists(blender_worker):
-             # Try fallback: maybe we are running script directly but get_app_paths pointed somewhere else?
-             # But if is_frozen is false, app_paths.scripts points to script dir.
-             # If is_frozen is true, sys._MEIPASS (or base_dir) should have it.
-             print(f"❌ Error: blender_worker.py not found at {blender_worker}")
-             input("Press Enter to exit...")
-             return
-
-        blender_cmd = [
-            blender_exe, "--background", "--python", blender_worker, "--",
-            "--input", input_path,
-            "--output", temp_out,
-            "--target", str(target_v),
-            "--maxtex", str(max_res),
-            "--normalize", str(profile['norm']),
-            "--matte", str(profile['matte'])
-        ]
-
-        print("  Running Blender pass...")
+        # Security Fix: Use a unique temporary directory to prevent symlink attacks
+        file_temp_dir = tempfile.mkdtemp(dir=temp_dir)
         try:
-            subprocess.run(blender_cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Blender Error on {f}: {e}")
-            continue
-        except FileNotFoundError:
-            print(f"❌ Error: Blender executable not found at {blender_exe}")
-            return
+            temp_out = os.path.join(file_temp_dir, f)
+            final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
 
-        # Meshopt Pass
-        if profile_key != "archive":
-            print("  Running Meshopt pass...")
-            if not os.path.exists(meshopt_exe):
-                 print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
-                 shutil.copy(temp_out, final_out)
+            print(f"🔹 Processing: {f}")
+
+            # Blender Pass
+            # Locate the bundled or relative blender_worker.py
+            script_dir = app_paths.scripts
+            blender_worker = os.path.join(script_dir, "blender_worker.py")
+
+            if not os.path.exists(blender_worker):
+                 # Try fallback: maybe we are running script directly but get_app_paths pointed somewhere else?
+                 # But if is_frozen is false, app_paths.scripts points to script dir.
+                 # If is_frozen is true, sys._MEIPASS (or base_dir) should have it.
+                 print(f"❌ Error: blender_worker.py not found at {blender_worker}")
+                 input("Press Enter to exit...")
+                 return
+
+            blender_cmd = [
+                blender_exe, "--background", "--python", blender_worker, "--",
+                "--input", input_path,
+                "--output", temp_out,
+                "--target", str(target_v),
+                "--maxtex", str(max_res),
+                "--normalize", str(profile['norm']),
+                "--matte", str(profile['matte'])
+            ]
+
+            print("  Running Blender pass...")
+            try:
+                subprocess.run(blender_cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Blender Error on {f}: {e}")
+                continue
+            except FileNotFoundError:
+                print(f"❌ Error: Blender executable not found at {blender_exe}")
+                return
+
+            # Meshopt Pass
+            if profile_key != "archive":
+                print("  Running Meshopt pass...")
+                if not os.path.exists(meshopt_exe):
+                     print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
+                     shutil.copy(temp_out, final_out)
+                else:
+                    # Use safer compression for Foundry VTT
+                    # -si: Simplification
+                    # -noq: No Quantization (this is the key for compatibility)
+                    # Removed -c and -cc which cause compression issues
+                    meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
+                    try:
+                        subprocess.run(meshopt_cmd, check=True)
+                    except subprocess.CalledProcessError as e:
+                         print(f"❌ Meshopt Error on {f}: {e}")
+                         continue
             else:
-                # Use safer compression for Foundry VTT
-                # -si: Simplification
-                # -noq: No Quantization (this is the key for compatibility)
-                # Removed -c and -cc which cause compression issues
-                meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
-                try:
-                    subprocess.run(meshopt_cmd, check=True)
-                except subprocess.CalledProcessError as e:
-                     print(f"❌ Meshopt Error on {f}: {e}")
-                     continue
-        else:
-            shutil.copy(temp_out, final_out)
+                shutil.copy(temp_out, final_out)
 
-        # Cleanup
-        if os.path.exists(temp_out):
-            os.remove(temp_out)
+            print(f"✅ Success: {f} -> {final_out}")
 
-        print(f"✅ Success: {f} -> {final_out}")
+        finally:
+            # Cleanup secure temp dir
+            shutil.rmtree(file_temp_dir, ignore_errors=True)
 
     print("Pipeline Finished.")
 
