@@ -42,12 +42,153 @@ def resolve_path(path, root_dir):
         return path
     return os.path.normpath(os.path.join(root_dir, path))
 
-def run_pipeline():
+def parse_args():
     parser = argparse.ArgumentParser(description="ChrisEurolog 3D Asset Pipeline")
     parser.add_argument("--mode", choices=["single", "batch"], help="Processing mode")
     parser.add_argument("--profile", choices=["token_production", "token_hobby", "tile", "archive"], help="Optimization profile")
     parser.add_argument("--input", help="Input filename (for single mode)")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+def get_processing_mode(args_mode):
+    if args_mode:
+        return args_mode
+    print("--- chriseurolog3d Pipeline ---")
+    mode_input = input("[1] Single [2] Batch: ").strip()
+    return "single" if mode_input == "1" else "batch"
+
+def select_profile(config_profiles, args_profile):
+    if args_profile:
+        return args_profile
+
+    print("\nAvailable Profiles:")
+    profile_options = list(config_profiles.items())
+
+    for idx, (name, details) in enumerate(profile_options, 1):
+        print(f"[{idx}] {name} ({details['target_v']} verts, {details['res']}px)")
+
+    while True:
+        selection = input(f"Select Profile [1-{len(profile_options)}]: ").strip()
+        if selection.isdigit():
+            idx = int(selection) - 1
+            if 0 <= idx < len(profile_options):
+                return profile_options[idx][0]
+
+        print("❌ Invalid selection. Please try again.")
+
+def confirm_settings(profile_key, profile_data):
+    target_v = profile_data['target_v']
+    max_res = profile_data['res']
+
+    print(f"\n✅ Selected: {profile_key}")
+    print(f"   Target Vertices: {target_v}")
+    print(f"   Max Resolution: {max_res}px")
+
+    override = input("\nPress Enter to use defaults, or type 'edit' to change values: ").strip().lower()
+    if override == 'edit':
+        try:
+            v_input = input(f"Enter new Target Vertex Count (current: {target_v}): ").strip()
+            if v_input:
+                target_v = int(v_input)
+
+            res_input = input(f"Enter new Max Texture Resolution (current: {max_res}): ").strip()
+            if res_input:
+                max_res = int(res_input)
+
+            print(f"👉 New Settings: {target_v} verts, {max_res}px")
+        except ValueError:
+            print("❌ Invalid number entered. Using defaults.")
+            target_v = profile_data['target_v']
+            max_res = profile_data['res']
+
+    return target_v, max_res
+
+def get_files_to_process(mode, args_input, source_dir):
+    files = []
+    if mode == "single":
+        filename = args_input
+        if not filename:
+             filename = input("\nFilename (in source/exports/): ").strip()
+
+        # Security Fix: Prevent path traversal by ensuring only the filename is used
+        filename = os.path.basename(filename)
+
+        if not filename.endswith(".glb"):
+            filename += ".glb"
+
+        files = [filename]
+    else:
+        files = [f for f in os.listdir(source_dir) if f.endswith(".glb")]
+
+    return files
+
+def process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, profile_data, target_v, max_res, app_paths, profile_key):
+    input_path = os.path.join(source_dir, f)
+    if not os.path.exists(input_path):
+            print(f"⚠️ Warning: File not found: {input_path}")
+            return
+
+    temp_out = os.path.join(temp_dir, f)
+    final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
+
+    print(f"🔹 Processing: {f}")
+
+    # Blender Pass
+    # Locate the bundled or relative blender_worker.py
+    script_dir = app_paths.scripts
+    blender_worker = os.path.join(script_dir, "blender_worker.py")
+
+    if not os.path.exists(blender_worker):
+            print(f"❌ Error: blender_worker.py not found at {blender_worker}")
+            raise FileNotFoundError(f"blender_worker.py not found at {blender_worker}")
+
+    blender_cmd = [
+        blender_exe, "--background", "--python", blender_worker, "--",
+        "--input", input_path,
+        "--output", temp_out,
+        "--target", str(target_v),
+        "--maxtex", str(max_res),
+        "--normalize", str(profile_data['norm']),
+        "--matte", str(profile_data['matte'])
+    ]
+
+    print("  Running Blender pass...")
+    try:
+        subprocess.run(blender_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender Error on {f}: {e}")
+        return
+    except FileNotFoundError:
+        print(f"❌ Error: Blender executable not found at {blender_exe}")
+        raise FileNotFoundError(f"Blender executable not found at {blender_exe}")
+
+    # Meshopt Pass
+    if profile_key != "archive":
+        print("  Running Meshopt pass...")
+        if not os.path.exists(meshopt_exe):
+                print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
+                shutil.copy(temp_out, final_out)
+        else:
+            # Use safer compression for Foundry VTT
+            # -si: Simplification
+            # -noq: No Quantization (this is the key for compatibility)
+            # Removed -c and -cc which cause compression issues
+            meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
+            try:
+                subprocess.run(meshopt_cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                    print(f"❌ Meshopt Error on {f}: {e}")
+                    return
+    else:
+        shutil.copy(temp_out, final_out)
+
+    # Cleanup
+    if os.path.exists(temp_out):
+        os.remove(temp_out)
+
+    print(f"✅ Success: {f} -> {final_out}")
+
+def run_pipeline():
+    args = parse_args()
 
     app_paths = get_app_paths()
     config = load_config(app_paths.base)
@@ -79,29 +220,10 @@ def run_pipeline():
              return
 
     # Determine Mode
-    mode = args.mode
-    if not mode:
-        print("--- chriseurolog3d Pipeline ---")
-        mode_input = input("[1] Single [2] Batch: ").strip()
-        mode = "single" if mode_input == "1" else "batch"
+    mode = get_processing_mode(args.mode)
 
     # Determine Profile
-    profile_key = args.profile
-    if not profile_key:
-        print("\nAvailable Profiles:")
-        profile_options = list(config['profiles'].items())
-
-        for idx, (name, details) in enumerate(profile_options, 1):
-            print(f"[{idx}] {name} ({details['target_v']} verts, {details['res']}px)")
-
-        while True:
-            selection = input(f"Select Profile [1-{len(profile_options)}]: ").strip()
-            if selection.isdigit():
-                idx = int(selection) - 1
-                if 0 <= idx < len(profile_options):
-                    profile_key = profile_options[idx][0]
-                    break
-            print("❌ Invalid selection. Please try again.")
+    profile_key = select_profile(config['profiles'], args.profile)
 
     if profile_key not in config['profiles']:
         print(f"❌ Error: Invalid profile '{profile_key}'")
@@ -110,46 +232,10 @@ def run_pipeline():
     profile = config['profiles'][profile_key]
 
     # Override Vertex/Texture Prompts
-    target_v = profile['target_v']
-    max_res = profile['res']
-
-    print(f"\n✅ Selected: {profile_key}")
-    print(f"   Target Vertices: {target_v}")
-    print(f"   Max Resolution: {max_res}px")
-
-    override = input("\nPress Enter to use defaults, or type 'edit' to change values: ").strip().lower()
-    if override == 'edit':
-        try:
-            v_input = input(f"Enter new Target Vertex Count (current: {target_v}): ").strip()
-            if v_input:
-                target_v = int(v_input)
-
-            res_input = input(f"Enter new Max Texture Resolution (current: {max_res}): ").strip()
-            if res_input:
-                max_res = int(res_input)
-
-            print(f"👉 New Settings: {target_v} verts, {max_res}px")
-        except ValueError:
-            print("❌ Invalid number entered. Using defaults.")
-            target_v = profile['target_v']
-            max_res = profile['res']
+    target_v, max_res = confirm_settings(profile_key, profile)
 
     # Determine Files
-    files = []
-    if mode == "single":
-        filename = args.input
-        if not filename:
-             filename = input("\nFilename (in source/exports/): ").strip()
-
-        # Security Fix: Prevent path traversal by ensuring only the filename is used
-        filename = os.path.basename(filename)
-
-        if not filename.endswith(".glb"):
-            filename += ".glb"
-
-        files = [filename]
-    else:
-        files = [f for f in os.listdir(source_dir) if f.endswith(".glb")]
+    files = get_files_to_process(mode, args.input, source_dir)
 
     if not files:
         print("No files to process.")
@@ -158,74 +244,12 @@ def run_pipeline():
     print(f"\n🚀 Starting processing for {len(files)} files...")
 
     for f in files:
-        input_path = os.path.join(source_dir, f)
-        if not os.path.exists(input_path):
-             print(f"⚠️ Warning: File not found: {input_path}")
-             continue
-
-        temp_out = os.path.join(temp_dir, f)
-        final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
-
-        print(f"🔹 Processing: {f}")
-
-        # Blender Pass
-        # Locate the bundled or relative blender_worker.py
-        script_dir = app_paths.scripts
-        blender_worker = os.path.join(script_dir, "blender_worker.py")
-
-        if not os.path.exists(blender_worker):
-             # Try fallback: maybe we are running script directly but get_app_paths pointed somewhere else?
-             # But if is_frozen is false, app_paths.scripts points to script dir.
-             # If is_frozen is true, sys._MEIPASS (or base_dir) should have it.
-             print(f"❌ Error: blender_worker.py not found at {blender_worker}")
+        try:
+            process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, profile, target_v, max_res, app_paths, profile_key)
+        except FileNotFoundError as e:
+             # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")
              return
-
-        blender_cmd = [
-            blender_exe, "--background", "--python", blender_worker, "--",
-            "--input", input_path,
-            "--output", temp_out,
-            "--target", str(target_v),
-            "--maxtex", str(max_res),
-            "--normalize", str(profile['norm']),
-            "--matte", str(profile['matte'])
-        ]
-
-        print("  Running Blender pass...")
-        try:
-            subprocess.run(blender_cmd, check=True, shell=False)
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Blender Error on {f}: {e}")
-            continue
-        except FileNotFoundError:
-            print(f"❌ Error: Blender executable not found at {blender_exe}")
-            return
-
-        # Meshopt Pass
-        if profile_key != "archive":
-            print("  Running Meshopt pass...")
-            if not os.path.exists(meshopt_exe):
-                 print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
-                 shutil.copy(temp_out, final_out)
-            else:
-                # Use safer compression for Foundry VTT
-                # -si: Simplification
-                # -noq: No Quantization (this is the key for compatibility)
-                # Removed -c and -cc which cause compression issues
-                meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
-                try:
-                    subprocess.run(meshopt_cmd, check=True, shell=False)
-                except subprocess.CalledProcessError as e:
-                     print(f"❌ Meshopt Error on {f}: {e}")
-                     continue
-        else:
-            shutil.copy(temp_out, final_out)
-
-        # Cleanup
-        if os.path.exists(temp_out):
-            os.remove(temp_out)
-
-        print(f"✅ Success: {f} -> {final_out}")
 
     print("Pipeline Finished.")
 
