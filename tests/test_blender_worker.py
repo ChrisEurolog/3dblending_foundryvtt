@@ -42,7 +42,7 @@ class TestBlenderWorker(unittest.TestCase):
 
     def test_remove_doubles_threshold(self):
         """
-        Verifies that remove_doubles is called with a threshold of 0.002.
+        Verifies that remove_doubles is called with a threshold of 0.002 to prevent jagged artifacts from over-merging.
         """
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
 
