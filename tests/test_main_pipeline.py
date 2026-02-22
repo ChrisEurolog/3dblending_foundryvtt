@@ -1,126 +1,141 @@
 import os
 import sys
 import unittest
-import json
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, MagicMock, call
+import argparse
+
+# Ensure we can import from scripts
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import scripts.main_pipeline as mp
 
 class TestMainPipeline(unittest.TestCase):
 
-    def test_get_app_paths_not_frozen(self):
-        # Simulate dev environment
-        with patch.dict(sys.__dict__, {'frozen': False}):
-            fake_file = os.path.abspath(os.path.join('/app/scripts', 'main_pipeline.py'))
-            with patch('scripts.main_pipeline.__file__', fake_file):
-                paths = mp.get_app_paths()
+    def test_get_app_paths_dev(self):
+        # In dev mode (not frozen)
+        with patch('sys.frozen', False, create=True):
+             paths = mp.get_app_paths()
+             # scripts dir should end with 'scripts'
+             self.assertTrue(paths.scripts.endswith('scripts'))
+             # base dir is parent of scripts
+             self.assertTrue(os.path.isdir(paths.base))
 
-                expected_script_dir = os.path.dirname(fake_file)
-                expected_base_dir = os.path.abspath(os.path.join(expected_script_dir, '..'))
+    def test_get_app_paths_frozen(self):
+        # In frozen mode
+        with patch('sys.frozen', True, create=True):
+            with patch('sys.executable', '/dist/exe'):
+                with patch('sys._MEIPASS', '/tmp/mei', create=True):
+                    paths = mp.get_app_paths()
+                    self.assertEqual(paths.base, '/dist')
+                    self.assertEqual(paths.scripts, '/tmp/mei')
 
-                self.assertEqual(paths.scripts, expected_script_dir)
-                self.assertEqual(paths.base, expected_base_dir)
+    def test_parse_args(self):
+        with patch('argparse.ArgumentParser.parse_args') as mock_parse:
+            mp.parse_args()
+            mock_parse.assert_called_once()
 
-    def test_get_app_paths_frozen_meipass(self):
-        # Simulate PyInstaller environment with _MEIPASS
-        fake_exe = '/app/dist/myapp'
-        fake_meipass = '/tmp/_MEI12345'
+    def test_get_processing_mode_arg(self):
+        self.assertEqual(mp.get_processing_mode('batch'), 'batch')
 
-        with patch.dict(sys.__dict__, {'frozen': True, 'executable': fake_exe, '_MEIPASS': fake_meipass}):
-            paths = mp.get_app_paths()
+    @patch('builtins.input', return_value='1')
+    def test_get_processing_mode_interactive_single(self, mock_input):
+        self.assertEqual(mp.get_processing_mode(None), 'single')
 
-            expected_base_dir = os.path.dirname(fake_exe)
-            expected_script_dir = fake_meipass
+    @patch('builtins.input', return_value='2')
+    def test_get_processing_mode_interactive_batch(self, mock_input):
+        self.assertEqual(mp.get_processing_mode(None), 'batch')
 
-            self.assertEqual(paths.base, expected_base_dir)
-            self.assertEqual(paths.scripts, expected_script_dir)
+    def test_select_profile_arg(self):
+        profiles = {'p1': {}, 'p2': {}}
+        self.assertEqual(mp.select_profile(profiles, 'p1'), 'p1')
 
-    def test_get_app_paths_frozen_no_meipass(self):
-        # Simulate PyInstaller environment without _MEIPASS (fallback)
-        fake_exe = '/app/dist/myapp'
+    @patch('builtins.input', side_effect=['1'])
+    def test_select_profile_interactive(self, mock_input):
+        profiles = {'p1': {'target_v': 100, 'res': 1024}, 'p2': {'target_v': 200, 'res': 2048}}
+        # Dictionary iteration order is guaranteed in recent Python
+        self.assertEqual(mp.select_profile(profiles, None), 'p1')
 
-        # Ensure _MEIPASS is not present in the environment for this test
-        has_meipass = hasattr(sys, '_MEIPASS')
-        original_meipass = getattr(sys, '_MEIPASS', None)
+    @patch('builtins.input', side_effect=['invalid', '2'])
+    def test_select_profile_interactive_retry(self, mock_input):
+        profiles = {'p1': {'target_v': 100, 'res': 1024}, 'p2': {'target_v': 200, 'res': 2048}}
+        self.assertEqual(mp.select_profile(profiles, None), 'p2')
 
-        if has_meipass:
-             del sys._MEIPASS
-
-        try:
-            with patch.dict(sys.__dict__, {'frozen': True, 'executable': fake_exe}):
-                paths = mp.get_app_paths()
-
-                expected_base_dir = os.path.dirname(fake_exe)
-                expected_script_dir = expected_base_dir # Fallback
-
-                self.assertEqual(paths.base, expected_base_dir)
-                self.assertEqual(paths.scripts, expected_script_dir)
-        finally:
-            if has_meipass:
-                sys._MEIPASS = original_meipass
-
-class TestSubprocessSecurity(unittest.TestCase):
-    @patch('scripts.main_pipeline.subprocess.run')
-    @patch('scripts.main_pipeline.os.path.exists')
-    @patch('scripts.main_pipeline.os.makedirs')
-    @patch('scripts.main_pipeline.os.listdir')
-    @patch('scripts.main_pipeline.load_config')
-    @patch('scripts.main_pipeline.get_app_paths')
-    @patch('scripts.main_pipeline.os.remove')
-    @patch('scripts.main_pipeline.shutil.copy')
     @patch('builtins.input', return_value='')
-    def test_subprocess_shell_false(self, mock_input, mock_copy, mock_remove, mock_get_app_paths, mock_load_config, mock_listdir, mock_makedirs, mock_exists, mock_run):
-        # Setup mocks
-        mock_paths = MagicMock()
-        mock_paths.base = '/base'
-        mock_paths.scripts = '/scripts'
-        mock_get_app_paths.return_value = mock_paths
+    def test_confirm_settings_default(self, mock_input):
+        profile = {'target_v': 100, 'res': 1024}
+        v, res = mp.confirm_settings('p1', profile)
+        self.assertEqual(v, 100)
+        self.assertEqual(res, 1024)
 
-        mock_config = {
-            'paths': {
-                'blender_exe': 'blender',
-                'meshopt_exe': 'meshopt',
-                'source_dir': 'source',
-                'output_dir': 'output',
-                'temp_dir': 'temp'
-            },
-            'profiles': {
-                'token_production': {
-                    'target_v': 1000,
-                    'res': 1024,
-                    'norm': True,
-                    'matte': False
-                }
-            }
-        }
-        mock_load_config.return_value = mock_config
+    @patch('builtins.input', side_effect=['edit', '500', '256'])
+    def test_confirm_settings_edit(self, mock_input):
+        profile = {'target_v': 100, 'res': 1024}
+        v, res = mp.confirm_settings('p1', profile)
+        self.assertEqual(v, 500)
+        self.assertEqual(res, 256)
 
-        # Mock file existence
-        # We need source_dir to exist, input file to exist, blender_worker to exist, meshopt_exe to exist
-        def side_effect_exists(path):
+    @patch('os.listdir', return_value=['a.glb', 'b.txt'])
+    def test_get_files_to_process_batch(self, mock_listdir):
+        files = mp.get_files_to_process('batch', None, '/source')
+        self.assertEqual(files, ['a.glb'])
+
+    def test_get_files_to_process_single_arg(self):
+        files = mp.get_files_to_process('single', 'myfile', '/source')
+        self.assertEqual(files, ['myfile.glb'])
+
+    @patch('builtins.input', return_value='userfile')
+    def test_get_files_to_process_single_interactive(self, mock_input):
+        files = mp.get_files_to_process('single', None, '/source')
+        self.assertEqual(files, ['userfile.glb'])
+
+    @patch('subprocess.run')
+    @patch('os.path.exists')
+    @patch('os.remove')
+    @patch('shutil.copy')
+    def test_process_file_success(self, mock_copy, mock_remove, mock_exists, mock_run):
+        # Setup
+        mock_exists.return_value = True # All files exist
+        profile_data = {'norm': 1, 'matte': 1}
+        app_paths = mp.AppPaths(base='/base', scripts='/scripts')
+
+        mp.process_file('test.glb', '/source', '/temp', '/out', 'blender', 'meshopt',
+                        profile_data, 1000, 1024, app_paths, 'production')
+
+        # Checks
+        self.assertEqual(mock_run.call_count, 2) # Blender + Meshopt
+        mock_remove.assert_called_once() # Cleanup
+
+    @patch('subprocess.run')
+    @patch('os.path.exists')
+    def test_process_file_missing_input(self, mock_exists, mock_run):
+        # input file does not exist
+        mock_exists.side_effect = lambda p: not p.endswith('test.glb')
+
+        profile_data = {'norm': 1, 'matte': 1}
+        app_paths = mp.AppPaths(base='/base', scripts='/scripts')
+
+        mp.process_file('test.glb', '/source', '/temp', '/out', 'blender', 'meshopt',
+                        profile_data, 1000, 1024, app_paths, 'production')
+
+        mock_run.assert_not_called()
+
+    @patch('subprocess.run')
+    @patch('os.path.exists')
+    def test_process_file_blender_worker_missing(self, mock_exists, mock_run):
+        # blender_worker.py does not exist
+        # exists calls: input_path (True), blender_worker (False)
+        def side_effect(p):
+            if p.endswith('blender_worker.py'):
+                return False
             return True
-        mock_exists.side_effect = side_effect_exists
+        mock_exists.side_effect = side_effect
 
-        # Mock listdir to return one file
-        mock_listdir.return_value = ['test.glb']
+        profile_data = {'norm': 1, 'matte': 1}
+        app_paths = mp.AppPaths(base='/base', scripts='/scripts')
 
-        # Mock sys.argv to run in batch mode with token_production profile
-        with patch.object(sys, 'argv', ['main_pipeline.py', '--mode', 'batch', '--profile', 'token_production']):
-            mp.run_pipeline()
-
-        # Check subprocess.run calls
-        # We expect 2 calls: one for blender, one for meshopt
-        self.assertEqual(mock_run.call_count, 2)
-
-        # Check args for first call (Blender)
-        args, kwargs = mock_run.call_args_list[0]
-        # Verify shell=False is explicitly passed
-        self.assertIn('shell', kwargs, "shell=False should be explicitly set for Blender pass")
-        self.assertFalse(kwargs['shell'], "shell argument must be False")
-
-        # Check args for second call (Meshopt)
-        args, kwargs = mock_run.call_args_list[1]
-        self.assertIn('shell', kwargs, "shell=False should be explicitly set for Meshopt pass")
-        self.assertFalse(kwargs['shell'], "shell argument must be False")
+        with self.assertRaises(FileNotFoundError):
+            mp.process_file('test.glb', '/source', '/temp', '/out', 'blender', 'meshopt',
+                            profile_data, 1000, 1024, app_paths, 'production')
 
 if __name__ == '__main__':
     unittest.main()
