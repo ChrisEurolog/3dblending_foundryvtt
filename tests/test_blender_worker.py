@@ -89,5 +89,113 @@ class TestBlenderWorker(unittest.TestCase):
             # Assert remove_doubles was called with threshold=0.002
             mock_bpy.ops.mesh.remove_doubles.assert_called_with(threshold=0.002)
 
+    def test_mattening_removes_metallic_and_fixes_roughness(self):
+        """
+        Verifies that the mattening pass:
+        1. Sets Metallic default to 0.0
+        2. Removes links to Metallic
+        3. Sets Roughness default to 0.8
+        4. Removes links to Roughness (to ensure matte look)
+        """
+        # Create a mock material with a Principled BSDF
+        mock_mat = MagicMock()
+        mock_mat.use_nodes = True
+
+        mock_bsdf = MagicMock()
+        mock_bsdf.type = 'BSDF_PRINCIPLED'
+
+        # Setup inputs dict
+        mock_metallic_input = MagicMock()
+        mock_metallic_input.default_value = 1.0 # Originally metallic
+        mock_metallic_input.links = [MagicMock()] # Has a link
+
+        mock_roughness_input = MagicMock()
+        mock_roughness_input.default_value = 0.2 # Originally shiny
+        mock_roughness_input.links = [MagicMock()] # Has a link
+
+        # Determine inputs based on key access
+        def get_input(key):
+            if key == 'Metallic':
+                return mock_metallic_input
+            if key == 'Roughness':
+                return mock_roughness_input
+            return MagicMock()
+
+        mock_bsdf.inputs.__getitem__.side_effect = get_input
+        mock_bsdf.inputs.__contains__.side_effect = lambda key: key in ['Metallic', 'Roughness']
+
+        mock_mat.node_tree.nodes = [mock_bsdf]
+        mock_bpy.data.materials = [mock_mat]
+
+        # Setup standard object requirements (copied from test_remove_doubles_threshold logic)
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [MagicMock()]
+        mock_obj.dimensions = (1.0, 1.0, 1.0)
+
+        mock_matrix_result = MagicMock()
+        mock_matrix_result.z = 0.0
+        mock_obj.matrix_world = MagicMock()
+        mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
+
+        mock_bpy.data.objects = [mock_obj]
+        mock_bpy.context.view_layer.objects.active = mock_obj
+
+        mock_bm = MagicMock()
+        mock_bm.verts = []
+        mock_bm.edges = []
+        mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        # Arguments to enable matte
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb', '--matte', '1']
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path'), \
+             patch('builtins.print'):
+
+            worker.process()
+
+            # Assertions
+            self.assertEqual(mock_metallic_input.default_value, 0.0)
+            self.assertTrue(mock_mat.node_tree.links.remove.called)
+            self.assertEqual(mock_roughness_input.default_value, 0.8)
+
+    def test_clears_split_normals(self):
+        """
+        Verifies that custom split normals are cleared before smoothing
+        to fix jagged edges on imported geometry.
+        """
+        # Setup standard object requirements
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [MagicMock()]
+        mock_obj.dimensions = (1.0, 1.0, 1.0)
+
+        mock_matrix_result = MagicMock()
+        mock_matrix_result.z = 0.0
+        mock_obj.matrix_world = MagicMock()
+        mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
+
+        mock_bpy.data.objects = [mock_obj]
+        mock_bpy.context.view_layer.objects.active = mock_obj
+
+        mock_bm = MagicMock()
+        mock_bm.verts = []
+        mock_bm.edges = []
+        mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path'), \
+             patch('builtins.print'):
+
+            worker.process()
+
+            # Assert customdata_custom_splitnormals_clear was called
+            mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
+
 if __name__ == '__main__':
     unittest.main()

@@ -246,14 +246,25 @@ def process():
             if mat.use_nodes:
                 bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
                 if bsdf:
+                    # Enforce Matte: remove metallic
+                    if 'Metallic' in bsdf.inputs:
+                        bsdf.inputs['Metallic'].default_value = 0.0
+                        # Remove all links to Metallic to prevent texture maps driving it
+                        for link in bsdf.inputs['Metallic'].links:
+                            mat.node_tree.links.remove(link)
+
+                    # Enforce Roughness
+                    if 'Roughness' in bsdf.inputs:
+                        bsdf.inputs['Roughness'].default_value = 0.8 # Matte base (0.8)
+                        # Remove all links to Roughness to ensure consistent matte finish
+                        for link in bsdf.inputs['Roughness'].links:
+                            mat.node_tree.links.remove(link)
+
                     # Handle Blender version differences for property names
                     if 'Coat Weight' in bsdf.inputs:
                         bsdf.inputs['Coat Weight'].default_value = 0.01 # Minimal shine (0.01)
                     elif 'Coat' in bsdf.inputs:
                         bsdf.inputs['Coat'].default_value = 0.01 # Minimal shine (0.01)
-
-                    if 'Roughness' in bsdf.inputs:
-                        bsdf.inputs['Roughness'].default_value = 0.8 # Matte base (0.8)
 
                     if 'Subsurface Weight' in bsdf.inputs:
                         bsdf.inputs['Subsurface Weight'].default_value = 0.0
@@ -284,6 +295,8 @@ def process():
     # AGENTS.md Rule 4: Foundry Compatibility - Normals Consistent
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
+    # FIX: Clear custom split normals to prevent jagged shading from imported normals
+    bpy.ops.mesh.customdata_custom_splitnormals_clear()
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
