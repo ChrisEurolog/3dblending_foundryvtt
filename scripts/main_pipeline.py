@@ -193,7 +193,7 @@ def run_pipeline():
 
         print("  Running Blender pass...")
         try:
-            subprocess.run(blender_cmd, check=True)
+            subprocess.run(blender_cmd, check=True, shell=False)
         except subprocess.CalledProcessError as e:
             print(f"❌ Blender Error on {f}: {e}")
             continue
@@ -214,7 +214,7 @@ def run_pipeline():
                 # Removed -c and -cc which cause compression issues
                 meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
                 try:
-                    subprocess.run(meshopt_cmd, check=True)
+                    subprocess.run(meshopt_cmd, check=True, shell=False)
                 except subprocess.CalledProcessError as e:
                      print(f"❌ Meshopt Error on {f}: {e}")
                      continue
