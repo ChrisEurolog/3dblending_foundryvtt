@@ -3,6 +3,104 @@ import os
 import argparse
 import sys
 import bmesh
+import json
+import struct
+import urllib.parse
+
+def is_safe_uri(uri):
+    """
+    Checks if a URI is safe.
+    Allowed:
+    - Data URIs (data:...)
+    - Relative paths without '..' that don't start with '/' or include protocol
+    """
+    if uri.startswith('data:'):
+        return True
+
+    # URL Decode
+    decoded_uri = urllib.parse.unquote(uri)
+
+    # Check for absolute paths
+    if os.path.isabs(decoded_uri):
+        return False
+
+    # Check for protocol usage (e.g., file://, http://) or drive letters (C:/)
+    if ':' in decoded_uri:
+        return False
+
+    # Check for absolute paths starting with / or \
+    if decoded_uri.startswith('/') or decoded_uri.startswith('\\'):
+        return False
+
+    # Check for directory traversal
+    normalized_path = decoded_uri.replace('\\', '/')
+    parts = normalized_path.split('/')
+    if '..' in parts:
+        return False
+
+    return True
+
+def validate_gltf_path(filepath):
+    """
+    Validates a glTF/GLB file for external references that could be exploited.
+    Raises ValueError if unsafe references are found.
+    """
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(f"File {filepath} not found")
+
+    ext = os.path.splitext(filepath)[1].lower()
+
+    try:
+        if ext == '.glb':
+            with open(filepath, 'rb') as f:
+                # Read header
+                magic = f.read(4)
+                if magic != b'glTF':
+                     raise ValueError("Invalid GLB file: missing magic header")
+
+                version = struct.unpack('<I', f.read(4))[0]
+                length = struct.unpack('<I', f.read(4))[0]
+
+                # Read first chunk (JSON)
+                chunk_length = struct.unpack('<I', f.read(4))[0]
+                chunk_type = f.read(4)
+
+                if chunk_type != b'JSON':
+                     raise ValueError("Invalid GLB file: first chunk is not JSON")
+
+                json_data = f.read(chunk_length)
+                try:
+                    data = json.loads(json_data)
+                except json.JSONDecodeError:
+                    raise ValueError("Invalid GLB file: JSON chunk is malformed")
+
+        elif ext == '.gltf':
+             with open(filepath, 'r', encoding='utf-8') as f:
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    raise ValueError("Invalid glTF file: JSON is malformed")
+        else:
+             # Not a glTF/GLB file, skip validation
+             return
+
+        # Check for external references
+        if 'buffers' in data:
+            for buffer in data['buffers']:
+                if 'uri' in buffer:
+                    uri = buffer['uri']
+                    if not is_safe_uri(uri):
+                        raise ValueError(f"Unsafe buffer URI detected: {uri}")
+
+        if 'images' in data:
+            for image in data['images']:
+                if 'uri' in image:
+                    uri = image['uri']
+                    if not is_safe_uri(uri):
+                         raise ValueError(f"Unsafe image URI detected: {uri}")
+
+    except Exception as e:
+        raise ValueError(f"Failed to validate glTF file: {e}")
 
 def build_args():
     p = argparse.ArgumentParser()
@@ -51,6 +149,12 @@ def process():
     bpy.ops.object.delete()
     if not os.path.exists(args.input):
         print(f"Error: Input file {args.input} does not exist.")
+        return
+
+    try:
+        validate_gltf_path(args.input)
+    except ValueError as e:
+        print(f"Security Error: {e}")
         return
 
     bpy.ops.import_scene.gltf(filepath=args.input)
