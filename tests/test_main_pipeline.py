@@ -1,7 +1,8 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock
+import json
+from unittest.mock import patch, mock_open
 import scripts.main_pipeline as mp
 
 class TestMainPipeline(unittest.TestCase):
