@@ -34,7 +34,10 @@ def resize_textures(max_res):
     for img in bpy.data.images:
         if img.size[0] > max_res or img.size[1] > max_res:
             print(f"Resizing {img.name} ({img.size[0]}x{img.size[1]}) -> {max_res}px")
-            img.scale(max_res, max_res)
+            scale_factor = max_res / max(img.size[0], img.size[1])
+            new_width = int(img.size[0] * scale_factor)
+            new_height = int(img.size[1] * scale_factor)
+            img.scale(new_width, new_height)
 
 def process():
     # Parse arguments after "--"
