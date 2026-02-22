@@ -25,13 +25,51 @@ def check_non_manifold(obj):
     bpy.ops.object.mode_set(mode='OBJECT')
     return is_non_manifold
 
-def resize_textures(max_res):
+def get_images_from_node_tree(node_tree):
+    """Recursively collects images from a node tree, including inside groups."""
+    images = set()
+    if not node_tree:
+        return images
+
+    for node in node_tree.nodes:
+        if node.type == 'TEX_IMAGE' and node.image:
+            images.add(node.image)
+        elif node.type == 'GROUP' and node.node_tree:
+            images.update(get_images_from_node_tree(node.node_tree))
+
+    return images
+
+def resize_textures(max_res, objects=None):
     """
     Iterates through all images in the blend file and scales them down
     if they exceed the max_res dimension.
+    If 'objects' is provided, only images used by those objects are checked.
     """
-    print(f"Checking textures against max resolution: {max_res}px")
-    for img in bpy.data.images:
+    images_to_check = []
+
+    if objects:
+        unique_images = set()
+        for obj in objects:
+            # Check for material slots (handles both Mesh and Object link types)
+            if not hasattr(obj, 'material_slots'):
+                continue
+
+            for slot in obj.material_slots:
+                mat = slot.material
+                if not mat or not mat.use_nodes:
+                    continue
+
+                # Recursively traverse node tree
+                unique_images.update(get_images_from_node_tree(mat.node_tree))
+
+        # Convert set to list and sort for deterministic order
+        images_to_check = sorted(list(unique_images), key=lambda x: x.name)
+    else:
+        # Fallback: check all images (original behavior)
+        images_to_check = bpy.data.images
+
+    print(f"Checking {len(images_to_check)} textures against max resolution: {max_res}px")
+    for img in images_to_check:
         if img.size[0] > max_res or img.size[1] > max_res:
             print(f"Resizing {img.name} ({img.size[0]}x{img.size[1]}) -> {max_res}px")
             img.scale(max_res, max_res)
@@ -134,7 +172,7 @@ def process():
 
     # 7. TEXTURE RESIZING
     if args.maxtex > 0:
-        resize_textures(args.maxtex)
+        resize_textures(args.maxtex, objects=[active_obj])
 
     # AGENTS.md Rule 4: Foundry Compatibility - Normals Consistent
     bpy.ops.object.mode_set(mode='EDIT')
