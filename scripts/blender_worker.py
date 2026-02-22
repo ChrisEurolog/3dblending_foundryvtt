@@ -97,7 +97,9 @@ def process():
 
     # 4. MATTENING PASS (Blender 5.0)
     if args.matte == 1:
-        for mat in bpy.data.materials:
+        # Optimization: Iterate only relevant materials
+        unique_materials = {slot.material for slot in active_obj.material_slots if slot.material}
+        for mat in unique_materials:
             if mat.use_nodes:
                 bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
                 if bsdf:
