@@ -1,7 +1,8 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock
+import subprocess
+from unittest.mock import patch, MagicMock, mock_open, call
 import scripts.main_pipeline as mp
 
 class TestMainPipeline(unittest.TestCase):
