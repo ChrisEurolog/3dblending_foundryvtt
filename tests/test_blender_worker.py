@@ -42,7 +42,7 @@ class TestBlenderWorker(unittest.TestCase):
 
     def test_remove_doubles_threshold(self):
         """
-        Verifies that remove_doubles is called with a threshold of 0.002 to prevent jagged artifacts from over-merging.
+        Verifies that remove_doubles is called with a threshold of 0.0005 to prevent jagged artifacts from over-merging.
         """
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
 
@@ -86,8 +86,8 @@ class TestBlenderWorker(unittest.TestCase):
 
             worker.process()
 
-            # Assert remove_doubles was called with threshold=0.002
-            mock_bpy.ops.mesh.remove_doubles.assert_called_with(threshold=0.002)
+            # Assert remove_doubles was called with threshold=0.0005
+            mock_bpy.ops.mesh.remove_doubles.assert_called_with(threshold=0.0005)
 
     def test_mattening_removes_metallic_and_fixes_roughness(self):
         """
