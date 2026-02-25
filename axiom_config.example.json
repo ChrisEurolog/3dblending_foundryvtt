@@ -1,0 +1,35 @@
+{
+  "paths": {
+    "blender_exe": "PATH_TO_BLENDER_EXE",
+    "meshopt_exe": "PATH_TO_GLTFPACK_EXE",
+    "source_dir": "PATH_TO_RAW_INPUT_FOLDER",
+    "temp_dir": "PATH_TO_TEMP_FOLDER",
+    "output_dir": "PATH_TO_OPTIMIZED_OUTPUT_FOLDER"
+  },
+  "profiles": {
+    "token_production": {
+      "target_v": 20000,
+      "res": 1024,
+      "norm": 1,
+      "matte": 1
+    },
+    "token_hobby": {
+      "target_v": 40000,
+      "res": 1024,
+      "norm": 1,
+      "matte": 1
+    },
+    "tile": {
+      "target_v": 5000,
+      "res": 2048,
+      "norm": 0,
+      "matte": 1
+    },
+    "archive": {
+      "target_v": 100000,
+      "res": 4096,
+      "norm": 0,
+      "matte": 0
+    }
+  }
+}
