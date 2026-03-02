@@ -47,6 +47,7 @@ def parse_args():
     parser.add_argument("--mode", choices=["single", "batch", "meshy"], help="Processing mode")
     parser.add_argument("--profile", choices=["token_production", "token_hobby", "tile", "archive"], help="Optimization profile")
     parser.add_argument("--input", help="Input filename (for single mode)")
+    parser.add_argument("--auto", action="store_true", help="Run without interactive prompts")
     return parser.parse_args()
 
 def get_processing_mode(args_mode):
@@ -78,13 +79,16 @@ def select_profile(config_profiles, args_profile):
 
         print("❌ Invalid selection. Please try again.")
 
-def confirm_settings(profile_key, profile_data):
+def confirm_settings(profile_key, profile_data, auto=False):
     target_v = profile_data['target_v']
     max_res = profile_data['res']
 
     print(f"\n✅ Selected: {profile_key}")
     print(f"   Target Vertices: {target_v}")
     print(f"   Max Resolution: {max_res}px")
+
+    if auto:
+        return target_v, max_res
 
     override = input("\nPress Enter to use defaults, or type 'edit' to change values: ").strip().lower()
     if override == 'edit':
@@ -249,7 +253,7 @@ def run_pipeline():
     profile = config['profiles'][profile_key]
 
     # Override Vertex/Texture Prompts
-    target_v, max_res = confirm_settings(profile_key, profile)
+    target_v, max_res = confirm_settings(profile_key, profile, args.auto)
 
     # Determine Files
     files = get_files_to_process(mode, args.input, source_dir)

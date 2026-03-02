@@ -25,6 +25,15 @@ if %errorlevel% neq 0 (
 )
 
 echo.
+echo Installing requirements...
+python -m pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo ❌ Failed to install requirements.
+    pause
+    exit /b
+)
+
+echo.
 echo Checking for source files...
 if not exist "scripts\main_pipeline.py" (
     echo ❌ Error: scripts\main_pipeline.py not found!
@@ -42,7 +51,7 @@ echo.
 echo Building chriseurolog3d.exe...
 :: Bundles blender_worker.py into the root of the internal temp directory
 :: Uses Windows backslashes for paths
-python -m PyInstaller --clean --onefile --name chriseurolog3d --add-data "scripts\blender_worker.py;." "scripts\main_pipeline.py"
+python -m PyInstaller --clean --onefile --name chriseurolog3d --add-data "scripts\blender_worker.py;." --hidden-import scripts.meshy_feeder --hidden-import requests "scripts\main_pipeline.py"
 
 if %errorlevel% neq 0 (
     echo ❌ Build failed!
