@@ -35,6 +35,15 @@ def load_config(base_dir):
 
     with open(config_path) as f:
         config = json.load(f)
+
+    # Validate configuration doesn't have unconfigured placeholder paths
+    if 'paths' in config:
+        for key, path in config['paths'].items():
+            if 'PATH_TO_' in path or 'YOUR_' in path:
+                print(f"❌ Error: Configuration file '{config_path}' contains unconfigured placeholders (e.g., '{path}' for '{key}').")
+                print("Please edit 'axiom_config.json' and provide actual paths to your tools and directories.")
+                return None
+
     return config
 
 def resolve_path(path, root_dir):
@@ -47,6 +56,7 @@ def parse_args():
     parser.add_argument("--mode", choices=["single", "batch", "meshy"], help="Processing mode")
     parser.add_argument("--profile", choices=["token_production", "token_hobby", "tile", "archive"], help="Optimization profile")
     parser.add_argument("--input", help="Input filename (for single mode)")
+    parser.add_argument("--auto", action="store_true", help="Run without interactive prompts")
     return parser.parse_args()
 
 def get_processing_mode(args_mode):
@@ -78,13 +88,16 @@ def select_profile(config_profiles, args_profile):
 
         print("❌ Invalid selection. Please try again.")
 
-def confirm_settings(profile_key, profile_data):
+def confirm_settings(profile_key, profile_data, auto=False):
     target_v = profile_data['target_v']
     max_res = profile_data['res']
 
     print(f"\n✅ Selected: {profile_key}")
     print(f"   Target Vertices: {target_v}")
     print(f"   Max Resolution: {max_res}px")
+
+    if auto:
+        return target_v, max_res
 
     override = input("\nPress Enter to use defaults, or type 'edit' to change values: ").strip().lower()
     if override == 'edit':
@@ -110,7 +123,8 @@ def get_files_to_process(mode, args_input, source_dir):
     if mode == "single":
         filename = args_input
         if not filename:
-             filename = input("\nFilename (in source/exports/): ").strip()
+             source_folder = os.path.basename(source_dir)
+             filename = input(f"\nFilename (in {source_folder}/): ").strip()
 
         # Security Fix: Prevent path traversal by ensuring only the filename is used
         filename = os.path.basename(filename)
@@ -249,7 +263,7 @@ def run_pipeline():
     profile = config['profiles'][profile_key]
 
     # Override Vertex/Texture Prompts
-    target_v, max_res = confirm_settings(profile_key, profile)
+    target_v, max_res = confirm_settings(profile_key, profile, args.auto)
 
     # Determine Files
     files = get_files_to_process(mode, args.input, source_dir)
