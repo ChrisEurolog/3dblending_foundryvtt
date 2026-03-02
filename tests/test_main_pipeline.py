@@ -61,5 +61,43 @@ class TestMainPipeline(unittest.TestCase):
                 self.assertEqual(paths.scripts, expected_scripts)
                 self.assertEqual(paths.base, expected_base)
 
+    def test_get_files_to_process_single_with_input(self):
+        """Test single mode with provided filename and .glb extension."""
+        files = mp.get_files_to_process("single", "test_file.glb", "/source")
+        self.assertEqual(files, ["test_file.glb"])
+
+    def test_get_files_to_process_single_with_input_no_ext(self):
+        """Test single mode with provided filename lacking .glb extension."""
+        files = mp.get_files_to_process("single", "test_file", "/source")
+        self.assertEqual(files, ["test_file.glb"])
+
+    @patch('builtins.input', return_value="prompted_file.glb")
+    def test_get_files_to_process_single_prompt(self, mock_input):
+        """Test single mode prompting for filename."""
+        files = mp.get_files_to_process("single", None, "/source")
+        self.assertEqual(files, ["prompted_file.glb"])
+        mock_input.assert_called_once()
+
+    def test_get_files_to_process_single_path_traversal(self):
+        """Test single mode path traversal prevention."""
+        files = mp.get_files_to_process("single", "../../../etc/passwd.glb", "/source")
+        self.assertEqual(files, ["passwd.glb"])
+
+        files = mp.get_files_to_process("single", "some/path/to/file", "/source")
+        self.assertEqual(files, ["file.glb"])
+
+    @patch('os.listdir')
+    def test_get_files_to_process_batch(self, mock_listdir):
+        """Test batch mode filtering for .glb files."""
+        mock_listdir.return_value = ["file1.glb", "file2.txt", "file3.glb", "file4.GLB", "dir.glb/"]
+
+        # It just uses endswith('.glb'), so "file4.GLB" won't be caught by endswith('.glb')
+        # And "dir.glb/" won't be caught. "file1.glb", "file3.glb" will be caught.
+        files = mp.get_files_to_process("batch", None, "/source")
+
+        self.assertEqual(files, ["file1.glb", "file3.glb"])
+        mock_listdir.assert_called_once_with("/source")
+
+
 if __name__ == '__main__':
     unittest.main()
