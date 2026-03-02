@@ -1,4 +1,5 @@
 {
+  "meshy_api_key": "YOUR_MESHY_API_KEY",
   "paths": {
     "blender_exe": "PATH_TO_BLENDER_EXE",
     "meshopt_exe": "PATH_TO_GLTFPACK_EXE",
