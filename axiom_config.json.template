@@ -1,4 +1,5 @@
 {
+  "meshy_api_key": "YOUR_MESHY_API_KEY",
   "paths": {
     "blender_exe": "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe",
     "meshopt_exe": "./tools/gltfpack.exe",

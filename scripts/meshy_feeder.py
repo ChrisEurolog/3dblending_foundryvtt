@@ -4,11 +4,15 @@ import base64
 import requests
 import subprocess
 import sys
+from scripts.main_pipeline import get_app_paths, load_config
 
 # ==========================================
 # ⚙️ CONFIGURATION
 # ==========================================
-MESHY_API_KEY = os.environ.get('MESHY_API_KEY', 'YOUR_MESHY_KEY_HERE')
+app_paths = get_app_paths()
+config = load_config(app_paths.base) or {}
+MESHY_API_KEY = config.get('meshy_api_key', os.environ.get('MESHY_API_KEY', 'YOUR_MESHY_KEY_HERE'))
+
 INPUT_FOLDER = './assets/portraits'
 
 EXPORT_DIR = './assets/source/exports'
