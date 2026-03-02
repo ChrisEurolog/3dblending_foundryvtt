@@ -8,7 +8,7 @@ import struct
 import urllib.parse
 
 # Constants
-MERGE_THRESHOLD = 0.002
+MERGE_THRESHOLD = 0.0005
 
 def is_safe_uri(uri):
     """
@@ -219,7 +219,7 @@ def process():
     active_obj = bpy.context.view_layer.objects.active
 
     # Glue: Merge by Distance to remove doubles and prevent tearing
-    # Reduced threshold to 0.002 (2mm) to fix jagged artifacts from over-merging
+    # Reduced threshold to 0.0005 to fix jagged artifacts from over-merging while preserving fine details
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.remove_doubles(threshold=MERGE_THRESHOLD)
