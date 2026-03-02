@@ -4,7 +4,7 @@ import base64
 import requests
 import subprocess
 import sys
-from scripts.main_pipeline import get_app_paths, load_config
+from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
 # ⚙️ CONFIGURATION
@@ -15,7 +15,8 @@ MESHY_API_KEY = config.get('meshy_api_key', os.environ.get('MESHY_API_KEY', 'YOU
 
 INPUT_FOLDER = './assets/portraits'
 
-EXPORT_DIR = './assets/source/exports'
+# Use the resolved source directory from the main config so models end up in the right place
+EXPORT_DIR = resolve_path(config.get('paths', {}).get('source_dir', './assets/source/exports'), app_paths.base)
 
 PIPELINE_SCRIPT = './scripts/main_pipeline.py'
 
@@ -100,14 +101,16 @@ def main():
             cmd = [
                 sys.executable,
                 "--mode", "batch",
-                "--profile", "token_production"
+                "--profile", "token_production",
+                "--auto"
             ]
         else:
             cmd = [
                 sys.executable,
                 PIPELINE_SCRIPT,
                 "--mode", "batch",
-                "--profile", "token_production"
+                "--profile", "token_production",
+                "--auto"
             ]
 
         subprocess.run(cmd, shell=False)
