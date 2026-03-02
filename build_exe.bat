@@ -25,6 +25,15 @@ if %errorlevel% neq 0 (
 )
 
 echo.
+echo Installing requirements...
+python -m pip install -r requirements.txt
+if %errorlevel% neq 0 (
+    echo ❌ Failed to install requirements.
+    pause
+    exit /b
+)
+
+echo.
 echo Checking for source files...
 if not exist "scripts\main_pipeline.py" (
     echo ❌ Error: scripts\main_pipeline.py not found!
