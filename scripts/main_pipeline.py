@@ -44,7 +44,7 @@ def resolve_path(path, root_dir):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="ChrisEurolog 3D Asset Pipeline")
-    parser.add_argument("--mode", choices=["single", "batch"], help="Processing mode")
+    parser.add_argument("--mode", choices=["single", "batch", "meshy"], help="Processing mode")
     parser.add_argument("--profile", choices=["token_production", "token_hobby", "tile", "archive"], help="Optimization profile")
     parser.add_argument("--input", help="Input filename (for single mode)")
     return parser.parse_args()
@@ -53,8 +53,11 @@ def get_processing_mode(args_mode):
     if args_mode:
         return args_mode
     print("--- chriseurolog3d Pipeline ---")
-    mode_input = input("[1] Single [2] Batch: ").strip()
-    return "single" if mode_input == "1" else "batch"
+    mode_input = input("[1] Single [2] Batch [3] Meshy Generate: ").strip()
+    if mode_input == "1": return "single"
+    elif mode_input == "2": return "batch"
+    elif mode_input == "3": return "meshy"
+    return "single"
 
 def select_profile(config_profiles, args_profile):
     if args_profile:
@@ -221,6 +224,20 @@ def run_pipeline():
 
     # Determine Mode
     mode = get_processing_mode(args.mode)
+
+    if mode == "meshy":
+        print("\n=== Meshy 3D Generation ===")
+        print("Please place your portrait images (png, jpg, jpeg) in the './assets/portraits' folder.")
+        print("WARNING: Files in the portraits folder will be REMOVED after successful generation.")
+        print("Please ensure you have your main source files backed up in a different directory.")
+        user_ready = input("Press Enter when ready to start generation, or type 'cancel' to exit: ").strip().lower()
+        if user_ready == 'cancel':
+            return
+
+        # Import and run meshy feeder
+        import scripts.meshy_feeder
+        scripts.meshy_feeder.main()
+        return
 
     # Determine Profile
     profile_key = select_profile(config['profiles'], args.profile)

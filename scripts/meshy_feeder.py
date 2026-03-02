@@ -84,16 +84,29 @@ def main():
 
                 if task_id and download_model(task_id, filename):
                     files_processed += 1
-                    os.rename(image_path, os.path.join(INPUT_FOLDER, f"{filename}.done"))
+                    os.remove(image_path)
+                    print(f"🗑️ Removed original image: {filename}")
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")
-        subprocess.run([
-            sys.executable,
-            PIPELINE_SCRIPT,
-            "--mode", "batch",
-            "--profile", "token_production"
-        ], shell=False)
+
+        # Check if running as PyInstaller executable
+        if getattr(sys, 'frozen', False):
+            # In compiled exe, sys.executable IS the pipeline script
+            cmd = [
+                sys.executable,
+                "--mode", "batch",
+                "--profile", "token_production"
+            ]
+        else:
+            cmd = [
+                sys.executable,
+                PIPELINE_SCRIPT,
+                "--mode", "batch",
+                "--profile", "token_production"
+            ]
+
+        subprocess.run(cmd, shell=False)
     else:
         print("\nNo new portraits found in ./assets/portraits/")
 
