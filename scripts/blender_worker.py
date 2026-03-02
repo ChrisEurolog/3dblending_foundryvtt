@@ -126,9 +126,11 @@ def check_non_manifold(obj):
     bpy.ops.object.mode_set(mode='OBJECT')
     return is_non_manifold
 
-def get_images_from_node_tree(node_tree):
+def get_images_from_node_tree(node_tree, images=None):
     """Recursively collects images from a node tree, including inside groups."""
-    images = set()
+    if images is None:
+        images = set()
+
     if not node_tree:
         return images
 
@@ -136,7 +138,7 @@ def get_images_from_node_tree(node_tree):
         if node.type == 'TEX_IMAGE' and node.image:
             images.add(node.image)
         elif node.type == 'GROUP' and node.node_tree:
-            images.update(get_images_from_node_tree(node.node_tree))
+            get_images_from_node_tree(node.node_tree, images)
 
     return images
 
