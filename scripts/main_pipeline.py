@@ -172,7 +172,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, 
             # -si: Simplification
             # -noq: No Quantization (this is the key for compatibility)
             # Removed -c and -cc which cause compression issues
-            meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
+            meshopt_cmd = [meshopt_exe, "-i", temp_out, "-o", final_out, "-noq"]
             try:
                 subprocess.run(meshopt_cmd, check=True)
             except subprocess.CalledProcessError as e:
