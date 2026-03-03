@@ -203,7 +203,10 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe,
         os.remove(temp_out)
 
     print(f"✅ Success: {f} -> {final_out}")
-    shutil.move(input_path, os.path.join(archive_dir, f))
+    archive_dest = os.path.join(archive_dir, f)
+    if os.path.exists(archive_dest):
+        os.remove(archive_dest)
+    shutil.move(input_path, archive_dest)
 
 def run_pipeline():
     args = parse_args()
