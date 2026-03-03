@@ -138,7 +138,7 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
-def process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, profile_data, target_v, max_res, app_paths, profile_key):
+def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key):
     input_path = os.path.join(source_dir, f)
     if not os.path.exists(input_path):
             print(f"⚠️ Warning: File not found: {input_path}")
@@ -181,15 +181,15 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, 
     # Meshopt Pass
     if profile_key != "archive":
         print("  Running Meshopt pass...")
-        if not os.path.exists(meshopt_exe):
-                print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
+        if not os.path.exists(gltfpack_exe):
+                print(f"⚠️ Warning: gltfpack not found at {gltfpack_exe}. Skipping optimization.")
                 shutil.copy(temp_out, final_out)
         else:
             # Use safer compression for Foundry VTT
             # -si: Simplification
             # -noq: No Quantization (this is the key for compatibility)
             # Removed -c and -cc which cause compression issues
-            meshopt_cmd = [meshopt_exe, "-i", temp_out, "-o", final_out, "-noq"]
+            meshopt_cmd = [gltfpack_exe, "-i", temp_out, "-o", final_out, "-noq"]
             try:
                 subprocess.run(meshopt_cmd, check=True)
             except subprocess.CalledProcessError as e:
@@ -220,7 +220,7 @@ def run_pipeline():
     # Resolve paths
     # Blender EXE might be system path or absolute.
     blender_exe = paths['blender_exe']
-    meshopt_exe = resolve_path(paths['meshopt_exe'], root_dir)
+    gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
     source_dir = resolve_path(paths['source_dir'], root_dir)
     output_dir = resolve_path(paths['output_dir'], root_dir)
     temp_dir = resolve_path(paths['temp_dir'], root_dir)
@@ -276,7 +276,7 @@ def run_pipeline():
 
     for f in files:
         try:
-            process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, profile, target_v, max_res, app_paths, profile_key)
+            process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key)
         except FileNotFoundError as e:
              # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")

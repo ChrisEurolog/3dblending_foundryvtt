@@ -2,7 +2,7 @@
   "meshy_api_key": "YOUR_MESHY_API_KEY",
   "paths": {
     "blender_exe": "PATH_TO_BLENDER_EXE",
-    "meshopt_exe": "PATH_TO_GLTFPACK_EXE",
+    "gltfpack_exe": "PATH_TO_GLTFPACK_EXE",
     "source_dir": "PATH_TO_RAW_INPUT_FOLDER",
     "temp_dir": "PATH_TO_TEMP_FOLDER",
     "output_dir": "PATH_TO_OPTIMIZED_OUTPUT_FOLDER"
