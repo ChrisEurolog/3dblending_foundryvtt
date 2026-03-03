@@ -35,6 +35,15 @@ def load_config(base_dir):
 
     with open(config_path) as f:
         config = json.load(f)
+
+    # Validate configuration doesn't have unconfigured placeholder paths
+    if 'paths' in config:
+        for key, path in config['paths'].items():
+            if 'PATH_TO_' in path or 'YOUR_' in path:
+                print(f"❌ Error: Configuration file '{config_path}' contains unconfigured placeholders (e.g., '{path}' for '{key}').")
+                print("Please edit 'axiom_config.json' and provide actual paths to your tools and directories.")
+                return None
+
     return config
 
 def resolve_path(path, root_dir):
@@ -114,7 +123,8 @@ def get_files_to_process(mode, args_input, source_dir):
     if mode == "single":
         filename = args_input
         if not filename:
-             filename = input("\nFilename (in source/exports/): ").strip()
+             source_folder = os.path.basename(source_dir)
+             filename = input(f"\nFilename (in {source_folder}/): ").strip()
 
         # Security Fix: Prevent path traversal by ensuring only the filename is used
         filename = os.path.basename(filename)
