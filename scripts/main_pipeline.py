@@ -138,7 +138,7 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
-def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key):
+def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
     input_path = os.path.join(source_dir, f)
     if not os.path.exists(input_path):
             print(f"⚠️ Warning: File not found: {input_path}")
@@ -203,6 +203,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe,
         os.remove(temp_out)
 
     print(f"✅ Success: {f} -> {final_out}")
+    shutil.move(input_path, os.path.join(archive_dir, f))
 
 def run_pipeline():
     args = parse_args()
@@ -225,9 +226,12 @@ def run_pipeline():
     output_dir = resolve_path(paths['output_dir'], root_dir)
     temp_dir = resolve_path(paths['temp_dir'], root_dir)
 
+    archive_dir_path = paths.get('archive_dir', os.path.join(os.path.dirname(paths['source_dir']), 'processed_archive'))
+    archive_dir = resolve_path(archive_dir_path, root_dir)
+
     # Ensure directories exist
-    for d in [output_dir, temp_dir]:
-        os.makedirs(d, exist_ok=True)
+    for d in [output_dir, temp_dir, archive_dir]:
+        os.makedirs(d, mode=0o755, exist_ok=True)
 
     if not os.path.exists(source_dir):
          try:
@@ -276,7 +280,7 @@ def run_pipeline():
 
     for f in files:
         try:
-            process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key)
+            process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key, archive_dir)
         except FileNotFoundError as e:
              # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")
