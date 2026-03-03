@@ -1,53 +1,33 @@
 import bpy
 import os
-import argparse
 import sys
 import bmesh
+import argparse
+import urllib.parse
 import json
 import struct
-import urllib.parse
+import time
 
-# Constants
 MERGE_THRESHOLD = 0.0005
 
+# ==========================================
+# SECURITY & VALIDATION
+# ==========================================
 def is_safe_uri(uri):
-    """
-    Checks if a URI is safe.
-    Allowed:
-    - Data URIs (data:...)
-    - Relative paths without '..' that don't start with '/' or include protocol
-    """
     if uri.startswith('data:'):
         return True
-
-    # URL Decode
     decoded_uri = urllib.parse.unquote(uri)
-
-    # Check for absolute paths
     if os.path.isabs(decoded_uri):
         return False
-
-    # Check for protocol usage (e.g., file://, http://) or drive letters (C:/)
     if ':' in decoded_uri:
         return False
-
-    # Check for absolute paths starting with / or \
     if decoded_uri.startswith('/') or decoded_uri.startswith('\\'):
         return False
-
-    # Check for directory traversal
-    normalized_path = decoded_uri.replace('\\', '/')
-    parts = normalized_path.split('/')
-    if '..' in parts:
+    if '..' in decoded_uri.replace('\\', '/').split('/'):
         return False
-
     return True
 
 def validate_gltf_path(filepath):
-    """
-    Validates a glTF/GLB file for external references that could be exploited.
-    Raises ValueError if unsafe references are found.
-    """
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"File {filepath} not found")
 
@@ -56,7 +36,6 @@ def validate_gltf_path(filepath):
     try:
         if ext == '.glb':
             with open(filepath, 'rb') as f:
-                # Read header
                 magic = f.read(4)
                 if magic != b'glTF':
                      raise ValueError("Invalid GLB file: missing magic header")
@@ -64,7 +43,6 @@ def validate_gltf_path(filepath):
                 version = struct.unpack('<I', f.read(4))[0]
                 length = struct.unpack('<I', f.read(4))[0]
 
-                # Read first chunk (JSON)
                 chunk_length = struct.unpack('<I', f.read(4))[0]
                 chunk_type = f.read(4)
 
@@ -84,10 +62,8 @@ def validate_gltf_path(filepath):
                 except json.JSONDecodeError:
                     raise ValueError("Invalid glTF file: JSON is malformed")
         else:
-             # Not a glTF/GLB file, skip validation
-             return
+             return True
 
-        # Check for external references
         if 'buffers' in data:
             for buffer in data['buffers']:
                 if 'uri' in buffer:
@@ -105,80 +81,25 @@ def validate_gltf_path(filepath):
     except Exception as e:
         raise ValueError(f"Failed to validate glTF file: {e}")
 
+    return True
+
+# ==========================================
+# CLI ARGUMENTS
+# ==========================================
 def build_args():
     p = argparse.ArgumentParser()
     p.add_argument("--input", required=True)
     p.add_argument("--output", required=True)
-    p.add_argument("--target", type=int, default=40000)
-    p.add_argument("--maxtex", type=int, default=1024)
+    p.add_argument("--target", type=int, default=20000)
+    p.add_argument("--maxtex", type=int, default=2048)
     p.add_argument("--normalize", type=int, default=1)
     p.add_argument("--matte", type=int, default=1)
     return p
 
-def check_non_manifold(obj):
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='DESELECT')
-    bpy.ops.mesh.select_non_manifold()
-
-    bm = bmesh.from_edit_mesh(obj.data)
-    is_non_manifold = any(v.select for v in bm.verts) or any(e.select for e in bm.edges)
-
-    bpy.ops.object.mode_set(mode='OBJECT')
-    return is_non_manifold
-
-def get_images_from_node_tree(node_tree, images=None):
-    """Recursively collects images from a node tree, including inside groups."""
-    if images is None:
-        images = set()
-
-    if not node_tree:
-        return images
-
-    for node in node_tree.nodes:
-        if node.type == 'TEX_IMAGE' and node.image:
-            images.add(node.image)
-        elif node.type == 'GROUP' and node.node_tree:
-            get_images_from_node_tree(node.node_tree, images)
-
-    return images
-
-def resize_textures(max_res, objects=None):
-    """
-    Iterates through all images in the blend file and scales them down
-    if they exceed the max_res dimension.
-    If 'objects' is provided, only images used by those objects are checked.
-    """
-    images_to_check = []
-
-    if objects:
-        unique_images = set()
-        for obj in objects:
-            # Check for material slots (handles both Mesh and Object link types)
-            if not hasattr(obj, 'material_slots'):
-                continue
-
-            for slot in obj.material_slots:
-                mat = slot.material
-                if not mat or not mat.use_nodes:
-                    continue
-
-                # Recursively traverse node tree
-                unique_images.update(get_images_from_node_tree(mat.node_tree))
-
-        # Convert set to list and sort for deterministic order
-        images_to_check = sorted(list(unique_images), key=lambda x: x.name)
-    else:
-        # Fallback: check all images (original behavior)
-        images_to_check = bpy.data.images
-
-    print(f"Checking {len(images_to_check)} textures against max resolution: {max_res}px")
-    for img in images_to_check:
-        if img.size[0] > max_res or img.size[1] > max_res:
-            print(f"Resizing {img.name} ({img.size[0]}x{img.size[1]}) -> {max_res}px")
-            img.scale(max_res, max_res)
-
+# ==========================================
+# PIPELINE EXECUTION
+# ==========================================
 def process():
-    # Parse arguments after "--"
     try:
         idx = sys.argv.index("--")
         argv = sys.argv[idx + 1:]
@@ -187,124 +108,196 @@ def process():
 
     args = build_args().parse_args(argv)
 
-    # 1. CLEAN & IMPORT
+    # 1. CLEAN SCENE & IMPORT HIGH-POLY
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
+
     if not os.path.exists(args.input):
         print(f"Error: Input file {args.input} does not exist.")
         sys.exit(1)
+        return
 
     try:
         validate_gltf_path(args.input)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+        return
     except ValueError as e:
         print(f"Security Error: {e}")
+        sys.exit(1)
         return
 
     bpy.ops.import_scene.gltf(filepath=args.input)
 
     mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
     if not mesh_objs:
-        print("No mesh objects found.")
+        print("❌ No mesh objects found in GLB.")
+        sys.exit(1)
         return
 
-    # 2. SURGICAL JOIN & UV GLUE
-    for obj in mesh_objs:
-        if obj.data.uv_layers:
-            obj.data.uv_layers[0].name = "UVMap"
-
+    # Join into a single High-Poly master object
     bpy.ops.object.select_all(action='DESELECT')
     for obj in mesh_objs:
         obj.select_set(True)
-
     bpy.context.view_layer.objects.active = mesh_objs[0]
     bpy.ops.object.join()
-    active_obj = bpy.context.view_layer.objects.active
+    high_obj = bpy.context.view_layer.objects.active
+    high_obj.name = "HighPoly_Master"
 
-    # Glue: Merge by Distance to remove doubles and prevent tearing
-    # Reduced threshold to 0.0005 to fix jagged artifacts from over-merging while preserving fine details
+    # Clean the High-Poly mesh
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     bpy.ops.mesh.remove_doubles(threshold=MERGE_THRESHOLD)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # AGENTS.md Rule 2: Check for non-manifold geometry
-    # We log it but do not attempt Voxel Remesh to preserve UVs.
-    if check_non_manifold(active_obj):
-        print(f"Warning: Object {active_obj.name} has non-manifold geometry. Skipping destructive Voxel Remesh.")
+    # 2. THE SCULPT (Quad Remesher)
+    print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
+    bpy.ops.preferences.addon_enable(module='quad_remesher')
 
-    # 3. SMART DECIMATE WITH GUARD RAILS
-    current_verts = len(active_obj.data.vertices)
-    if args.target > 0 and current_verts > args.target:
-        ratio = max(args.target / current_verts, 0.05) # 5% Safety Floor
-        mod = active_obj.modifiers.new(name="Deci", type='DECIMATE')
-        mod.ratio = ratio
-        # AGENTS.md Rule 1: Always use use_collapse_triangulate=True
+    # Configure Quad Remesher settings
+    bpy.context.scene.qremesher.target_count = args.target
+    bpy.context.scene.qremesher.use_materials = False
+
+    # Ensure High Poly is active and selected
+    bpy.ops.object.select_all(action='DESELECT')
+    high_obj.select_set(True)
+    bpy.context.view_layer.objects.active = high_obj
+
+    # Execute Remesh
+    bpy.ops.qremesher.remesh()
+
+    # Quad Remesher creates a new object starting with 'Retopo_'. Find it.
+    low_obj = None
+    for obj in bpy.data.objects:
+        if obj.name.startswith("Retopo_"):
+            low_obj = obj
+            break
+
+    if not low_obj:
+        print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
+        # Fallback to standard decimation if QR fails in headless mode
+        low_obj = high_obj.copy()
+        low_obj.data = high_obj.data.copy()
+        bpy.context.collection.objects.link(low_obj)
+        mod = low_obj.modifiers.new(name="Deci", type='DECIMATE')
+
+        verts_len = len(low_obj.data.vertices)
+        if verts_len == 0:
+            verts_len = 1
+        mod.ratio = max(args.target / verts_len, 0.05)
+
         mod.use_collapse_triangulate = True
+        bpy.context.view_layer.objects.active = low_obj
         bpy.ops.object.modifier_apply(modifier="Deci")
 
-    # 4. MATTENING PASS (Blender 5.0)
+    # 3. AUTO-UV UNWRAP
+    print("🔹 Auto-Unwrapping UVs...")
+    bpy.ops.object.select_all(action='DESELECT')
+    low_obj.select_set(True)
+    bpy.context.view_layer.objects.active = low_obj
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTIONAL', island_margin=0.01)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # 4. HIGH-TO-LOW POLY BAKING
+    print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
+    bpy.context.scene.render.engine = 'CYCLES'
+    bpy.context.scene.cycles.device = 'GPU'  # Uses GPU if available
+    bpy.context.scene.cycles.samples = 1     # 1 sample is perfect for diffuse color
+
+    # Create the blank canvas for the bake
+    baked_image = bpy.data.images.new("Baked_Texture", width=args.maxtex, height=args.maxtex)
+
+    # Create the new material for the low-poly token
+    baked_mat = bpy.data.materials.new(name="Token_Material")
+    baked_mat.use_nodes = True
+    low_obj.data.materials.clear()
+    low_obj.data.materials.append(baked_mat)
+
+    nodes = baked_mat.node_tree.nodes
+    bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
+    if bsdf is None:
+        bsdf = nodes.get("Principled BSDF")
+    if bsdf is None:
+        bsdf = nodes.new('ShaderNodeBsdfPrincipled')
+
+    tex_node = nodes.new('ShaderNodeTexImage')
+    tex_node.image = baked_image
+    baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+    nodes.active = tex_node # THIS is critical: Blender bakes to the active image node!
+
+    # Select High, then Low (Low must be active)
+    bpy.ops.object.select_all(action='DESELECT')
+    high_obj.select_set(True)
+    low_obj.select_set(True)
+    bpy.context.view_layer.objects.active = low_obj
+
+    # Execute the Bake
+    bpy.context.scene.render.bake.use_selected_to_active = True
+    bpy.context.scene.render.bake.margin = 16
+    bpy.context.scene.render.bake.max_ray_distance = 0.1 # 10cm search radius for details
+    bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'})
+
+    # 5. MATTE FINISH & CLEANUP
+    print("🔹 Applying Matte Finish and Aligning...")
+    bpy.data.objects.remove(high_obj, do_unlink=True) # Destroy the heavy mesh!
+
     if args.matte == 1:
+        # We also want to apply mattening to existing materials on other objects if needed,
+        # but in this script, everything is merged and baked to baked_mat
         for mat in bpy.data.materials:
             if mat.use_nodes:
-                bsdf = next((n for n in mat.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
-                if bsdf:
-                    # Enforce Matte: remove metallic
-                    if 'Metallic' in bsdf.inputs:
-                        bsdf.inputs['Metallic'].default_value = 0.0
-                        # Remove all links to Metallic to prevent texture maps driving it
-                        for link in bsdf.inputs['Metallic'].links:
+                mat_nodes = mat.node_tree.nodes
+                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None)
+                if mat_bsdf is None:
+                    mat_bsdf = mat_nodes.get("Principled BSDF")
+                if mat_bsdf:
+                    if 'Metallic' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Metallic'].default_value = 0.0
+                        for link in mat_bsdf.inputs['Metallic'].links:
+                            mat.node_tree.links.remove(link)
+                    if 'Roughness' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Roughness'].default_value = 0.8
+                        for link in mat_bsdf.inputs['Roughness'].links:
                             mat.node_tree.links.remove(link)
 
-                    # Enforce Roughness
-                    if 'Roughness' in bsdf.inputs:
-                        bsdf.inputs['Roughness'].default_value = 0.8 # Matte base (0.8)
-                        # Remove all links to Roughness to ensure consistent matte finish
-                        for link in bsdf.inputs['Roughness'].links:
-                            mat.node_tree.links.remove(link)
+                    if 'Coat Weight' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Coat Weight'].default_value = 0.01
+                    elif 'Coat' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Coat'].default_value = 0.01
 
-                    # Handle Blender version differences for property names
-                    if 'Coat Weight' in bsdf.inputs:
-                        bsdf.inputs['Coat Weight'].default_value = 0.01 # Minimal shine (0.01)
-                    elif 'Coat' in bsdf.inputs:
-                        bsdf.inputs['Coat'].default_value = 0.01 # Minimal shine (0.01)
-
-                    if 'Subsurface Weight' in bsdf.inputs:
-                        bsdf.inputs['Subsurface Weight'].default_value = 0.0
-                    elif 'Subsurface' in bsdf.inputs:
-                         bsdf.inputs['Subsurface'].default_value = 0.0
-
-    # 5. FOUNDRY ALIGNMENT (Bottom-Z & Pivot)
+    # Foundry Floor Alignment
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
 
-    # Move to Floor
-    bottom_z = min((active_obj.matrix_world @ v.co).z for v in active_obj.data.vertices)
-    active_obj.location.z -= bottom_z
-    bpy.ops.object.transform_apply(location=True)
+    verts = list(low_obj.data.vertices)
+    if verts:
+        bottom_z = min((low_obj.matrix_world @ v.co).z for v in verts)
+        low_obj.location.z -= bottom_z
+        bpy.ops.object.transform_apply(location=True)
 
-    # 6. NORMALIZATION
     if args.normalize == 1:
-        max_dim = max(active_obj.dimensions)
-        if max_dim > 0:
-            scale_factor = 1.0 / max_dim
-            active_obj.scale = (scale_factor, scale_factor, scale_factor)
-            bpy.ops.object.transform_apply(scale=True)
+        dims = list(low_obj.dimensions) if hasattr(low_obj.dimensions, '__iter__') else []
+        if dims:
+            max_dim = max(dims)
+            if max_dim > 0:
+                scale_factor = 1.0 / max_dim
+                low_obj.scale = (scale_factor, scale_factor, scale_factor)
+                bpy.ops.object.transform_apply(scale=True)
 
-    # 7. TEXTURE RESIZING
-    if args.maxtex > 0:
-        resize_textures(args.maxtex, objects=[active_obj])
-
-    # AGENTS.md Rule 4: Foundry Compatibility - Normals Consistent
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    # FIX: Clear custom split normals to prevent jagged shading from imported normals
     bpy.ops.mesh.customdata_custom_splitnormals_clear()
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
-
-    # 8. SHADE SMOOTH & EXPORT
     bpy.ops.object.shade_smooth()
+
+    # 6. EXPORT
+    print("🔹 Exporting Final VTT Token...")
     bpy.ops.export_scene.gltf(filepath=args.output, export_format='GLB', export_apply=True)
+    print("✅ Success!")
 
 if __name__ == "__main__":
     process()
