@@ -237,7 +237,7 @@ def process():
     # Execute the Bake
     bpy.context.scene.render.bake.use_selected_to_active = True
     bpy.context.scene.render.bake.margin = 16
-    bpy.context.scene.render.bake.max_ray_distance = 0.1 # 10cm search radius for details
+    bpy.context.scene.render.bake.max_ray_distance = 0.02 # 2cm search radius for details
     bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'})
 
     # 5. MATTE FINISH & CLEANUP
