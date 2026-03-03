@@ -153,7 +153,14 @@ def process():
 
     # 2. THE SCULPT (Quad Remesher)
     print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
-    bpy.ops.preferences.addon_enable(module='quad_remesher')
+    import addon_utils
+    qr_module_name = 'quad_remesher'
+    for mod in addon_utils.modules():
+        if mod.__name__.startswith('quad_remesher'):
+            qr_module_name = mod.__name__
+            break
+
+    bpy.ops.preferences.addon_enable(module=qr_module_name)
 
     # Configure Quad Remesher settings
     bpy.context.scene.qremesher.target_count = args.target
