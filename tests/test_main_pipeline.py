@@ -98,6 +98,37 @@ class TestMainPipeline(unittest.TestCase):
         self.assertEqual(files, ["file1.glb", "file3.glb"])
         mock_listdir.assert_called_once_with("/source")
 
+    @patch('scripts.main_pipeline.os.path.exists')
+    @patch('scripts.main_pipeline.os.remove')
+    @patch('scripts.main_pipeline.subprocess.run')
+    @patch('scripts.main_pipeline.shutil.copy')
+    @patch('scripts.main_pipeline.shutil.move')
+    def test_process_file_success_moves_file(self, mock_move, mock_copy, mock_run, mock_remove, mock_exists):
+        """Test process_file calls shutil.move on success."""
+        # mock_exists defaults to True
+        mock_exists.return_value = True
+
+        app_paths = MagicMock()
+        app_paths.scripts = '/scripts'
+
+        profile_data = {'norm': 1, 'matte': 1}
+
+        mp.process_file(
+            f="test.glb",
+            source_dir="/source",
+            temp_dir="/temp",
+            output_dir="/output",
+            blender_exe="blender",
+            gltfpack_exe="gltfpack",
+            profile_data=profile_data,
+            target_v=1000,
+            max_res=1024,
+            app_paths=app_paths,
+            profile_key="token_production",
+            archive_dir="/archive"
+        )
+
+        mock_move.assert_called_once_with("/source/test.glb", "/archive/test.glb")
 
 if __name__ == '__main__':
     unittest.main()
