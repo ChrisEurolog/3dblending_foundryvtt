@@ -9,6 +9,7 @@ mock_bmesh = MagicMock()
 # We use patch.dict to safely insert mocks into sys.modules
 sys.modules['bpy'] = mock_bpy
 sys.modules['bmesh'] = mock_bmesh
+sys.modules['addon_utils'] = MagicMock()
 
 import scripts.blender_worker as worker
 
