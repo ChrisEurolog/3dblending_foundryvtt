@@ -67,7 +67,9 @@ class TestBlenderWorker(unittest.TestCase):
         mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
 
         # We need at least one mesh object to proceed to the joining step
-        mock_bpy.data.objects = [mock_obj]
+        mock_objects = MagicMock()
+        mock_objects.__iter__.return_value = [mock_obj]
+        mock_bpy.data.objects = mock_objects
 
         # Setup active object
         mock_bpy.context.view_layer.objects.active = mock_obj
@@ -78,6 +80,16 @@ class TestBlenderWorker(unittest.TestCase):
         mock_bm.verts = []
         mock_bm.edges = []
         mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        # Ensure new materials can be added
+        mock_bpy.data.materials.new.return_value = MagicMock()
+        mock_bpy.data.images.new.return_value = MagicMock()
+
+        # Support objects removal without error
+        def mock_remove(obj, do_unlink):
+            if obj in mock_bpy.data.objects:
+                mock_bpy.data.objects.remove(obj)
+        mock_bpy.data.objects.remove = MagicMock(side_effect=mock_remove)
 
         with patch.object(sys, 'argv', test_args), \
              patch('os.path.exists', return_value=True), \
@@ -125,7 +137,20 @@ class TestBlenderWorker(unittest.TestCase):
         mock_bsdf.inputs.__contains__.side_effect = lambda key: key in ['Metallic', 'Roughness']
 
         mock_mat.node_tree.nodes = [mock_bsdf]
-        mock_bpy.data.materials = [mock_mat]
+        mock_materials = MagicMock()
+        mock_materials.__iter__.return_value = [mock_mat]
+        mock_bpy.data.materials = mock_materials
+
+        # Provide inputs directly since we loop through baked_mat.node_tree.nodes where node.type is not used by default
+        # But wait, the test is passing 'mock_bsdf' inside 'mock_mat.node_tree.nodes'.
+        # The script does: bsdf = nodes.get("Principled BSDF")
+        # So we need to ensure nodes.get returns mock_bsdf
+        mock_nodes = MagicMock()
+        mock_nodes.get.return_value = mock_bsdf
+        # nodes.new('ShaderNodeTexImage')
+        mock_tex_node = MagicMock()
+        mock_nodes.new.return_value = mock_tex_node
+        mock_mat.node_tree.nodes = mock_nodes
 
         # Setup standard object requirements (copied from test_remove_doubles_threshold logic)
         mock_obj = MagicMock()
@@ -138,13 +163,26 @@ class TestBlenderWorker(unittest.TestCase):
         mock_obj.matrix_world = MagicMock()
         mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
 
-        mock_bpy.data.objects = [mock_obj]
+        mock_objects = MagicMock()
+        mock_objects.__iter__.return_value = [mock_obj]
+        mock_bpy.data.objects = mock_objects
+
         mock_bpy.context.view_layer.objects.active = mock_obj
 
         mock_bm = MagicMock()
         mock_bm.verts = []
         mock_bm.edges = []
         mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        # Ensure new materials can be added
+        mock_bpy.data.materials.new.return_value = MagicMock()
+        mock_bpy.data.images.new.return_value = MagicMock()
+
+        # Support objects removal without error
+        def mock_remove(obj, do_unlink):
+            if obj in mock_bpy.data.objects:
+                mock_bpy.data.objects.remove(obj)
+        mock_bpy.data.objects.remove = MagicMock(side_effect=mock_remove)
 
         # Arguments to enable matte
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb', '--matte', '1']
@@ -177,13 +215,26 @@ class TestBlenderWorker(unittest.TestCase):
         mock_obj.matrix_world = MagicMock()
         mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
 
-        mock_bpy.data.objects = [mock_obj]
+        mock_objects = MagicMock()
+        mock_objects.__iter__.return_value = [mock_obj]
+        mock_bpy.data.objects = mock_objects
+
         mock_bpy.context.view_layer.objects.active = mock_obj
 
         mock_bm = MagicMock()
         mock_bm.verts = []
         mock_bm.edges = []
         mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        # Ensure new materials can be added
+        mock_bpy.data.materials.new.return_value = MagicMock()
+        mock_bpy.data.images.new.return_value = MagicMock()
+
+        # Support objects removal without error
+        def mock_remove(obj, do_unlink):
+            if obj in mock_bpy.data.objects:
+                mock_bpy.data.objects.remove(obj)
+        mock_bpy.data.objects.remove = MagicMock(side_effect=mock_remove)
 
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
 
