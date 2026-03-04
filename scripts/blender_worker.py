@@ -286,6 +286,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
     low_obj.scale = (0.001, 0.001, 0.001)
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
+    # Shrink the Retopo model back to VTT miniature scale
+    bpy.context.view_layer.objects.active = low_obj
+    low_obj.scale = (0.001, 0.001, 0.001)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
     # 6. EXPORT
     print("🔹 Exporting Final VTT Token...")
 
