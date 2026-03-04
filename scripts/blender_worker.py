@@ -286,7 +286,15 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
     # 6. EXPORT
     print("🔹 Exporting Final VTT Token...")
-    bpy.ops.export_scene.gltf(filepath=args.output, export_format='GLB', export_apply=True)
+
+    # --- JULES FIX: Add 'use_selection=True' so it ignores the hidden giant! ---
+    bpy.ops.export_scene.gltf(
+        filepath=args.output,
+        export_format='GLB',
+        export_apply=True,
+        use_selection=True
+    )
+
     print("✅ Success!")
 
     # Hand control back to the caller
