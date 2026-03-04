@@ -99,8 +99,12 @@ class TestBlenderWorker(unittest.TestCase):
 
             worker.process()
 
-            # Assert remove_doubles was called with threshold=0.0005
-            mock_bpy.ops.mesh.remove_doubles.assert_called_with(threshold=0.0005)
+            # Assert remove_doubles was called with threshold=0.0005 (high poly) and 0.0001 (low poly)
+            mock_bpy.ops.mesh.remove_doubles.assert_any_call(threshold=0.0005)
+            mock_bpy.ops.mesh.remove_doubles.assert_any_call(threshold=0.0001)
+
+            # Assert delete_loose was called (low poly)
+            mock_bpy.ops.mesh.delete_loose.assert_called_once()
 
     def test_mattening_removes_metallic_and_fixes_roughness(self):
         """

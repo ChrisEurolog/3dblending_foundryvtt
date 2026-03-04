@@ -172,7 +172,13 @@ def process():
     bpy.context.view_layer.objects.active = high_obj
 
     # Execute Remesh
-    bpy.ops.qremesher.remesh()
+    try:
+        bpy.ops.qremesher.remesh()
+    except RuntimeError as e:
+        if "expected class QREMESHER_OT_remesh" in str(e):
+            print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
+        else:
+            raise e
 
     used_decimate = False
 
@@ -302,8 +308,15 @@ def process():
                 low_obj.scale = (scale_factor, scale_factor, scale_factor)
                 bpy.ops.object.transform_apply(scale=True)
 
+    # Cleanup pass
+    bpy.ops.object.select_all(action='DESELECT')
+    low_obj.select_set(True)
+    bpy.context.view_layer.objects.active = low_obj
+
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles(threshold=0.0001)
+    bpy.ops.mesh.delete_loose()
     bpy.ops.mesh.customdata_custom_splitnormals_clear()
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
