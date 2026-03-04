@@ -333,27 +333,24 @@ def process():
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
 
-    # Get the BMesh to count vertices before we merge
+    # THE FIX: Run a safe cleanup without needing 'Undo'
+    # We will use a dynamically smaller threshold to protect microscopic models
     import bmesh
     bm = bmesh.from_edit_mesh(bpy.context.edit_object.data)
     verts_before = len(bm.verts)
 
-    # Run the cleanup (Merge by Distance)
-    bpy.ops.mesh.remove_doubles(threshold=MERGE_THRESHOLD)
+    # Use a hyper-sensitive threshold for VTT tokens
+    safe_threshold = 0.000001
+    bpy.ops.mesh.remove_doubles(threshold=safe_threshold)
 
-    # Update BMesh to see the damage
     bm.verts.ensure_lookup_table()
     verts_after = len(bm.verts)
 
-    # THE SAFETY CHECK:
-    # If the cleanup destroyed more than 20% of the mesh, it was too aggressive. Undo it!
-    if verts_after < (verts_before * 0.8):
-        print(f"⚠️ Cleanup too aggressive ({verts_before} -> {verts_after} verts). Reverting!")
-        bpy.ops.ed.undo()
-    else:
-        print(f"🔹 Cleanup removed {verts_before - verts_after} overlapping vertices.")
+    print(f"🔹 Cleanup removed {verts_before - verts_after} overlapping vertices.")
 
+    # Apply scale before remeshing to prevent Exoside errors
     bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
     # 2. THE SCULPT (Quad Remesher)
     print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
