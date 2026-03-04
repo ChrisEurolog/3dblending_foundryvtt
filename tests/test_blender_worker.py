@@ -11,6 +11,10 @@ sys.modules['bpy'] = mock_bpy
 sys.modules['bmesh'] = mock_bmesh
 sys.modules['addon_utils'] = MagicMock()
 
+# Setup bpy.app.timers mock
+mock_bpy.app = MagicMock()
+mock_bpy.app.timers = MagicMock()
+
 import scripts.blender_worker as worker
 
 class TestBlenderWorker(unittest.TestCase):
@@ -87,10 +91,15 @@ class TestBlenderWorker(unittest.TestCase):
         mock_bpy.data.images.new.return_value = MagicMock()
 
         # Support objects removal without error
-        def mock_remove(obj, do_unlink):
-            if obj in mock_bpy.data.objects:
-                mock_bpy.data.objects.remove(obj)
-        mock_bpy.data.objects.remove = MagicMock(side_effect=mock_remove)
+        mock_bpy.data.objects.remove = MagicMock()
+
+        # Mock timer register to just call the function immediately
+        def mock_register(func):
+            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+            func()
+
+        mock_bpy.app.timers.register.side_effect = mock_register
 
         with patch.object(sys, 'argv', test_args), \
              patch('os.path.exists', return_value=True), \
@@ -184,13 +193,18 @@ class TestBlenderWorker(unittest.TestCase):
         mock_bpy.data.images.new.return_value = MagicMock()
 
         # Support objects removal without error
-        def mock_remove(obj, do_unlink):
-            if obj in mock_bpy.data.objects:
-                mock_bpy.data.objects.remove(obj)
-        mock_bpy.data.objects.remove = MagicMock(side_effect=mock_remove)
+        mock_bpy.data.objects.remove = MagicMock()
 
         # Arguments to enable matte
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb', '--matte', '1']
+
+        # Mock timer register to just call the function immediately
+        def mock_register(func):
+            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+            func()
+
+        mock_bpy.app.timers.register.side_effect = mock_register
 
         with patch.object(sys, 'argv', test_args), \
              patch('os.path.exists', return_value=True), \
@@ -236,12 +250,17 @@ class TestBlenderWorker(unittest.TestCase):
         mock_bpy.data.images.new.return_value = MagicMock()
 
         # Support objects removal without error
-        def mock_remove(obj, do_unlink):
-            if obj in mock_bpy.data.objects:
-                mock_bpy.data.objects.remove(obj)
-        mock_bpy.data.objects.remove = MagicMock(side_effect=mock_remove)
+        mock_bpy.data.objects.remove = MagicMock()
 
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        # Mock timer register to just call the function immediately
+        def mock_register(func):
+            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+            func()
+
+        mock_bpy.app.timers.register.side_effect = mock_register
 
         with patch.object(sys, 'argv', test_args), \
              patch('os.path.exists', return_value=True), \
