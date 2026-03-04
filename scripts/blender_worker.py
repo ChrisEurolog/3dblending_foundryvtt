@@ -150,6 +150,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.001)
         bpy.ops.object.mode_set(mode='OBJECT')
 
+        # --- JULES FIX 1: Smooth the mesh BEFORE baking! ---
+        bpy.ops.object.shade_smooth()
+
         # 4. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
         bpy.context.scene.render.engine = 'CYCLES'
@@ -204,8 +207,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # Execute the Bake configuration
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 16
-        # --- JULES FIX 2: Increase ray distance because models are 1000x larger! ---
-        bpy.context.scene.render.bake.max_ray_distance = 5.0
+        # --- JULES FIX 2: Lower ray distance so it doesn't cross-bake body parts ---
+        bpy.context.scene.render.bake.max_ray_distance = 0.5
 
         try:
             # 5. Run the bake
@@ -277,7 +280,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
     bpy.ops.mesh.customdata_custom_splitnormals_clear()
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.shade_smooth()
+
+    # Shrink the Retopo model back to VTT miniature scale
+    bpy.context.view_layer.objects.active = low_obj
+    low_obj.scale = (0.001, 0.001, 0.001)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
     # Shrink the Retopo model back to VTT miniature scale
     bpy.context.view_layer.objects.active = low_obj
