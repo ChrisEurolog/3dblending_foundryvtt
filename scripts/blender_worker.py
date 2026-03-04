@@ -146,7 +146,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
+        # --- JULES FIX 1: Shrink UV margin to 0.001 so pixels aren't squeezed ---
+        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.001)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 4. HIGH-TO-LOW POLY BAKING
@@ -203,7 +204,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # Execute the Bake configuration
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 16
-        bpy.context.scene.render.bake.max_ray_distance = 0.02 # 2cm search radius for details
+        # --- JULES FIX 2: Increase ray distance because models are 1000x larger! ---
+        bpy.context.scene.render.bake.max_ray_distance = 5.0
 
         try:
             # 5. Run the bake
@@ -215,7 +217,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
     # 5. MATTE FINISH & CLEANUP
     print("🔹 Applying Matte Finish and Aligning...")
-    bpy.data.objects.remove(high_obj, do_unlink=True) # Destroy the heavy mesh!
+    # --- JULES FIX 3: Do NOT delete the high_obj here. Just deselect and hide it. ---
+    high_obj.select_set(False)
+    high_obj.hide_viewport = True
+    high_obj.hide_render = True
 
     if args.matte == 1:
         # We also want to apply mattening to existing materials on other objects if needed,
@@ -333,25 +338,20 @@ def process():
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
 
-    # Clean the High-Poly mesh
+    # --- JULES FIX 4: Disable destructive vertex cleanup entirely! ---
     # Ensure we are in edit mode
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-
-    # THE FIX: Run a safe cleanup without needing 'Undo'
-    # We will use a dynamically smaller threshold to protect microscopic models
     import bmesh
     bm = bmesh.from_edit_mesh(bpy.context.edit_object.data)
     verts_before = len(bm.verts)
 
-    # Use a hyper-sensitive threshold for VTT tokens
-    safe_threshold = 0.000001
-    bpy.ops.mesh.remove_doubles(threshold=safe_threshold)
-
-    bm.verts.ensure_lookup_table()
-    verts_after = len(bm.verts)
-
-    print(f"🔹 Cleanup removed {verts_before - verts_after} overlapping vertices.")
+    # safe_threshold = 0.000001
+    # bpy.ops.mesh.remove_doubles(threshold=safe_threshold)
+    # bm.verts.ensure_lookup_table()
+    # verts_after = len(bm.verts)
+    # print(f"🔹 Cleanup removed {verts_before - verts_after} overlapping vertices.")
+    print(f"🔹 Preserving all {verts_before} high-poly vertices for baking.")
 
     # Apply scale before remeshing to prevent Exoside errors
     bpy.ops.object.mode_set(mode='OBJECT')
