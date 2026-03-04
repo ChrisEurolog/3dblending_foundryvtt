@@ -8,8 +8,15 @@ if user_addon_path not in sys.path:
     sys.path.append(user_addon_path)
 
 # Ensure the addon is actually enabled
-if "quad_remesher_1_4" not in bpy.context.preferences.addons:
-    bpy.ops.preferences.addon_enable(module="quad_remesher_1_4")
+# Note: Changed from "quad_remesher_1_4" to "quad_remesher"
+addon_name = "quad_remesher"
+
+if addon_name not in bpy.context.preferences.addons:
+    try:
+        bpy.ops.preferences.addon_enable(module=addon_name)
+        print(f"✅ {addon_name} successfully enabled.")
+    except Exception as e:
+        print(f"❌ Could not enable {addon_name}: {e}")
 
 import bmesh
 import argparse
