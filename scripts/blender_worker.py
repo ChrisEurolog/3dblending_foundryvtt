@@ -268,18 +268,23 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                 low_obj.scale = (scale_factor, scale_factor, scale_factor)
                 bpy.ops.object.transform_apply(scale=True)
 
-    # Cleanup pass
-    bpy.ops.object.select_all(action='DESELECT')
-    low_obj.select_set(True)
-    bpy.context.view_layer.objects.active = low_obj
+    # --- JULES: DELETE OR COMMENT OUT THIS ENTIRE BLOCK ---
 
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=0.0001)
-    bpy.ops.mesh.delete_loose()
-    bpy.ops.mesh.customdata_custom_splitnormals_clear()
-    bpy.ops.mesh.normals_make_consistent(inside=False)
-    bpy.ops.object.mode_set(mode='OBJECT')
+    # Cleanup pass
+    # bpy.ops.object.select_all(action='DESELECT')
+    # low_obj.select_set(True)
+    # bpy.context.view_layer.objects.active = low_obj
+
+    # bpy.ops.object.mode_set(mode='EDIT')
+    # bpy.ops.mesh.select_all(action='SELECT')
+    # bpy.ops.mesh.remove_doubles(threshold=0.0001)
+    # bpy.ops.mesh.delete_loose()
+    # bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    # bpy.ops.mesh.normals_make_consistent(inside=False)
+    # bpy.ops.object.mode_set(mode='OBJECT')
+    # bpy.ops.object.shade_smooth()
+
+    # ------------------------------------------------------
 
     # Shrink the Retopo model back to VTT miniature scale
     bpy.context.view_layer.objects.active = low_obj
