@@ -139,18 +139,26 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 3. AUTO-UV UNWRAP
-        print("🔹 Auto-Unwrapping UVs...")
+
+        # --- JULES FIX 1: WELD THE SHARDS FIRST ---
+        print("🔹 Welding Quad Remesher FBX shards...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
-        # --- JULES FIX 1: Smooth the mesh BEFORE unwrapping/baking ---
-        bpy.ops.object.shade_smooth()
-
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # --- JULES FIX 2: Give the islands a healthy 10-pixel gap ---
+        # This sews the 20,000 disconnected triangles into a single, solid mesh
+        bpy.ops.mesh.remove_doubles(threshold=0.0001)
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Now that it is a solid object, we can properly smooth it!
+        bpy.ops.object.shade_smooth()
+
+        # 3. AUTO-UV UNWRAP
+        print("🔹 Auto-Unwrapping UVs...")
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
         bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -207,12 +215,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # Execute the Bake configuration
         bpy.context.scene.render.bake.use_selected_to_active = True
-
-        # --- JULES FIX 3: Stop the aggressive color bleeding! ---
         bpy.context.scene.render.bake.margin = 2
 
-        # (Keep the ray distance we set earlier)
-        bpy.context.scene.render.bake.max_ray_distance = 0.5
+        # --- JULES FIX 2: The Goldilocks Ray Distance ---
+        # 5.0 was too big, 0.5 was too small.
+        bpy.context.scene.render.bake.max_ray_distance = 1.5
 
         try:
             # 5. Run the bake
