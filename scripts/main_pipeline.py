@@ -159,7 +159,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe,
             raise FileNotFoundError(f"blender_worker.py not found at {blender_worker}")
 
     blender_cmd = [
-        blender_exe, "--background", "--python", blender_worker, "--",
+        blender_exe, "--python", blender_worker, "--",
         "--input", input_path,
         "--output", temp_out,
         "--target", str(target_v),
