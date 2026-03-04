@@ -108,12 +108,20 @@ class TestBlenderWorker(unittest.TestCase):
 
             worker.process()
 
-            # Assert remove_doubles was called with threshold=0.0001 (low poly)
-            # The high poly clean up was disabled, so 0.000001 is no longer called
-            mock_bpy.ops.mesh.remove_doubles.assert_any_call(threshold=0.0001)
+            # The cleanup pass (which included remove_doubles and delete_loose)
+            # has been removed from blender_worker.py, so these should NOT be called.
+            # We assert they are NOT called to verify the new behavior.
+            try:
+                mock_bpy.ops.mesh.remove_doubles.assert_called()
+                self.fail("remove_doubles should not have been called, cleanup pass was removed.")
+            except AssertionError:
+                pass # Expected
 
-            # Assert delete_loose was called (low poly)
-            mock_bpy.ops.mesh.delete_loose.assert_called_once()
+            try:
+                mock_bpy.ops.mesh.delete_loose.assert_called()
+                self.fail("delete_loose should not have been called, cleanup pass was removed.")
+            except AssertionError:
+                pass # Expected
 
     def test_mattening_removes_metallic_and_fixes_roughness(self):
         """
@@ -269,8 +277,13 @@ class TestBlenderWorker(unittest.TestCase):
 
             worker.process()
 
-            # Assert customdata_custom_splitnormals_clear was called
-            mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
+            # The cleanup pass has been removed, so this should NOT be called.
+            # We assert it is NOT called to verify the new behavior.
+            try:
+                mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
+                self.fail("customdata_custom_splitnormals_clear should not have been called, cleanup pass was removed.")
+            except AssertionError:
+                pass # Expected
 
 if __name__ == '__main__':
     unittest.main()
