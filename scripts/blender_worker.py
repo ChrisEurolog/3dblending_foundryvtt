@@ -274,6 +274,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.shade_smooth()
 
+    # Shrink the Retopo model back to VTT miniature scale
+    bpy.context.view_layer.objects.active = low_obj
+    low_obj.scale = (0.001, 0.001, 0.001)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
     # 6. EXPORT
     print("🔹 Exporting Final VTT Token...")
     bpy.ops.export_scene.gltf(filepath=args.output, export_format='GLB', export_apply=True)
@@ -371,6 +376,11 @@ def process():
     bpy.ops.object.select_all(action='DESELECT')
     high_obj.select_set(True)
     bpy.context.view_layer.objects.active = high_obj
+
+    # Temporarily make the model massive for the Exoside engine
+    bpy.context.view_layer.objects.active = high_obj
+    high_obj.scale = (1000.0, 1000.0, 1000.0)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
     # Execute Remesh
     used_decimate = False
