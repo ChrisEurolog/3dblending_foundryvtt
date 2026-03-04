@@ -116,119 +116,7 @@ def build_args():
 # ==========================================
 # PIPELINE EXECUTION
 # ==========================================
-def process():
-    try:
-        idx = sys.argv.index("--")
-        argv = sys.argv[idx + 1:]
-    except ValueError:
-        argv = []
-
-    args = build_args().parse_args(argv)
-
-    # 1. CLEAN SCENE & IMPORT HIGH-POLY
-    bpy.ops.object.select_all(action='SELECT')
-    bpy.ops.object.delete()
-
-    if not os.path.exists(args.input):
-        print(f"Error: Input file {args.input} does not exist.")
-        sys.exit(1)
-        return
-
-    try:
-        validate_gltf_path(args.input)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        sys.exit(1)
-        return
-    except ValueError as e:
-        print(f"Security Error: {e}")
-        sys.exit(1)
-        return
-
-    bpy.ops.import_scene.gltf(filepath=args.input)
-
-    mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
-    if not mesh_objs:
-        print("❌ No mesh objects found in GLB.")
-        sys.exit(1)
-        return
-
-    # Join into a single High-Poly master object
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in mesh_objs:
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = mesh_objs[0]
-    bpy.ops.object.join()
-    high_obj = bpy.context.view_layer.objects.active
-    high_obj.name = "HighPoly_Master"
-
-    # Clean the High-Poly mesh
-    bpy.ops.object.mode_set(mode='EDIT')
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.remove_doubles(threshold=MERGE_THRESHOLD)
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    # 2. THE SCULPT (Quad Remesher)
-    print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
-    import addon_utils
-    qr_module_name = 'quad_remesher'
-    for mod in addon_utils.modules():
-        if mod.__name__.startswith('quad_remesher'):
-            qr_module_name = mod.__name__
-            break
-
-    bpy.ops.preferences.addon_enable(module=qr_module_name)
-
-    # Configure Quad Remesher settings
-    bpy.context.scene.qremesher.target_count = args.target
-    bpy.context.scene.qremesher.use_materials = False
-
-    # Ensure High Poly is active and selected
-    bpy.ops.object.select_all(action='DESELECT')
-    high_obj.select_set(True)
-    bpy.context.view_layer.objects.active = high_obj
-
-    # Execute Remesh
-    used_decimate = False
-    low_obj = None
-
-    original_name = bpy.context.active_object.name
-    retopo_name = "Retopo_" + original_name
-
-    try:
-        bpy.ops.qremesher.remesh()
-        print("⏳ Waiting for Exoside engine to finish remeshing...")
-
-        # Wait up to 120 seconds for the new object to appear
-        timeout = time.time() + 120
-
-        while time.time() < timeout:
-            # Check if Exoside handed the new mesh back yet
-            if retopo_name in bpy.data.objects:
-                print("✅ Quad Remesher successful!")
-                low_obj = bpy.data.objects[retopo_name]
-                # Ensure the new object is the active one for the export phase
-                bpy.context.view_layer.objects.active = low_obj
-                break
-
-            # Keep Blender's event loop ticking so the modal addon can finish
-            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
-            time.sleep(0.5)
-
-        if not low_obj:
-            print("❌ Quad Remesher timed out waiting for mesh.")
-            used_decimate = True
-
-    except RuntimeError as e:
-        if "expected class QREMESHER_OT_remesh" in str(e):
-            print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
-            used_decimate = True
-        else:
-            raise e
-    except Exception as e:
-        print(f"❌ Error during remeshing: {e}")
-        used_decimate = True
-
+def finish_export(args, high_obj, low_obj, used_decimate):
     if not low_obj and used_decimate:
         print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
         # Fallback to standard decimation if QR fails in headless mode
@@ -365,6 +253,139 @@ def process():
     print("🔹 Exporting Final VTT Token...")
     bpy.ops.export_scene.gltf(filepath=args.output, export_format='GLB', export_apply=True)
     print("✅ Success!")
+
+    # Hand control back to the caller
+    bpy.ops.wm.quit_blender()
+
+def process():
+    try:
+        idx = sys.argv.index("--")
+        argv = sys.argv[idx + 1:]
+    except ValueError:
+        argv = []
+
+    args = build_args().parse_args(argv)
+
+    # 1. CLEAN SCENE & IMPORT HIGH-POLY
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+
+    if not os.path.exists(args.input):
+        print(f"Error: Input file {args.input} does not exist.")
+        sys.exit(1)
+        return
+
+    try:
+        validate_gltf_path(args.input)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+        return
+    except ValueError as e:
+        print(f"Security Error: {e}")
+        sys.exit(1)
+        return
+
+    bpy.ops.import_scene.gltf(filepath=args.input)
+
+    mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
+    if not mesh_objs:
+        print("❌ No mesh objects found in GLB.")
+        sys.exit(1)
+        return
+
+    # Join into a single High-Poly master object
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in mesh_objs:
+        obj.select_set(True)
+    bpy.context.view_layer.objects.active = mesh_objs[0]
+    bpy.ops.object.join()
+    high_obj = bpy.context.view_layer.objects.active
+    high_obj.name = "HighPoly_Master"
+
+    # Clean the High-Poly mesh
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.remove_doubles(threshold=MERGE_THRESHOLD)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # 2. THE SCULPT (Quad Remesher)
+    print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
+    import addon_utils
+    qr_module_name = 'quad_remesher'
+    for mod in addon_utils.modules():
+        if mod.__name__.startswith('quad_remesher'):
+            qr_module_name = mod.__name__
+            break
+
+    bpy.ops.preferences.addon_enable(module=qr_module_name)
+
+    # Configure Quad Remesher settings
+    bpy.context.scene.qremesher.target_count = args.target
+    bpy.context.scene.qremesher.use_materials = False
+
+    # Ensure High Poly is active and selected
+    bpy.ops.object.select_all(action='DESELECT')
+    high_obj.select_set(True)
+    bpy.context.view_layer.objects.active = high_obj
+
+    # Execute Remesh
+    used_decimate = False
+    low_obj = None
+
+    original_name = bpy.context.active_object.name
+    retopo_name = "Retopo_" + original_name
+
+    try:
+        bpy.ops.qremesher.remesh()
+        print("⏳ Waiting for Exoside engine to finish remeshing...")
+
+        # Wait up to 120 seconds for the new object to appear
+        timeout = time.time() + 120
+
+        def check_retopo():
+            nonlocal low_obj, used_decimate
+            if retopo_name in bpy.data.objects:
+                print("✅ Quad Remesher successful!")
+                low_obj = bpy.data.objects[retopo_name]
+                # Ensure the new object is the active one for the export phase
+                bpy.context.view_layer.objects.active = low_obj
+                finish_export(args, high_obj, low_obj, used_decimate=False)
+                return None
+
+            if time.time() >= timeout:
+                print("❌ Quad Remesher timed out waiting for mesh.")
+                used_decimate = True
+                finish_export(args, high_obj, low_obj=None, used_decimate=True)
+                return None
+
+            return 1.0 # Check again in 1 second
+
+        if not hasattr(bpy.app, 'timers'):
+            # Fallback for mocking/testing environments without timers
+            while time.time() < timeout:
+                if retopo_name in bpy.data.objects:
+                    low_obj = bpy.data.objects[retopo_name]
+                    bpy.context.view_layer.objects.active = low_obj
+                    break
+                time.sleep(0.5)
+            if not low_obj:
+                used_decimate = True
+            finish_export(args, high_obj, low_obj, used_decimate)
+        else:
+            bpy.app.timers.register(check_retopo)
+
+    except RuntimeError as e:
+        if "expected class QREMESHER_OT_remesh" in str(e):
+            print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
+            used_decimate = True
+            finish_export(args, high_obj, low_obj=None, used_decimate=True)
+        else:
+            raise e
+    except Exception as e:
+        print(f"❌ Error during remeshing: {e}")
+        used_decimate = True
+        finish_export(args, high_obj, low_obj=None, used_decimate=True)
 
 if __name__ == "__main__":
     process()
