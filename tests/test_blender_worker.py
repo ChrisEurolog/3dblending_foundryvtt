@@ -108,8 +108,8 @@ class TestBlenderWorker(unittest.TestCase):
 
             worker.process()
 
-            # Assert remove_doubles was called with threshold=0.000001 (high poly) and 0.0001 (low poly)
-            mock_bpy.ops.mesh.remove_doubles.assert_any_call(threshold=0.000001)
+            # Assert remove_doubles was called with threshold=0.0001 (low poly)
+            # The high poly clean up was disabled, so 0.000001 is no longer called
             mock_bpy.ops.mesh.remove_doubles.assert_any_call(threshold=0.0001)
 
             # Assert delete_loose was called (low poly)
