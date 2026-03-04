@@ -189,26 +189,48 @@ def process():
     bpy.context.view_layer.objects.active = high_obj
 
     # Execute Remesh
+    used_decimate = False
+    low_obj = None
+
+    original_name = bpy.context.active_object.name
+    retopo_name = "Retopo_" + original_name
+
     try:
         bpy.ops.qremesher.remesh()
+        print("⏳ Waiting for Exoside engine to finish remeshing...")
+
+        # Wait up to 120 seconds for the new object to appear
+        timeout = time.time() + 120
+
+        while time.time() < timeout:
+            # Check if Exoside handed the new mesh back yet
+            if retopo_name in bpy.data.objects:
+                print("✅ Quad Remesher successful!")
+                low_obj = bpy.data.objects[retopo_name]
+                # Ensure the new object is the active one for the export phase
+                bpy.context.view_layer.objects.active = low_obj
+                break
+
+            # Keep Blender's event loop ticking so the modal addon can finish
+            bpy.ops.wm.redraw_timer(type='DRAW_WIN_SWAP', iterations=1)
+            time.sleep(0.5)
+
+        if not low_obj:
+            print("❌ Quad Remesher timed out waiting for mesh.")
+            used_decimate = True
+
     except RuntimeError as e:
         if "expected class QREMESHER_OT_remesh" in str(e):
             print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
+            used_decimate = True
         else:
             raise e
-
-    used_decimate = False
-
-    # Quad Remesher creates a new object starting with 'Retopo_'. Find it.
-    low_obj = None
-    for obj in bpy.data.objects:
-        if obj.name.startswith("Retopo_"):
-            low_obj = obj
-            break
-
-    if not low_obj:
-        print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
+    except Exception as e:
+        print(f"❌ Error during remeshing: {e}")
         used_decimate = True
+
+    if not low_obj and used_decimate:
+        print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
         # Fallback to standard decimation if QR fails in headless mode
         low_obj = high_obj.copy()
         low_obj.data = high_obj.data.copy()
