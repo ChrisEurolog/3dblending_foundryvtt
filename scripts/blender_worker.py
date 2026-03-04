@@ -144,14 +144,15 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
+
+        # --- JULES FIX 1: Smooth the mesh BEFORE unwrapping/baking ---
+        bpy.ops.object.shade_smooth()
+
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # --- JULES FIX 1: Shrink UV margin to 0.001 so pixels aren't squeezed ---
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.001)
+        # --- JULES FIX 2: Give the islands a healthy 10-pixel gap ---
+        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
-
-        # --- JULES FIX 1: Smooth the mesh BEFORE baking! ---
-        bpy.ops.object.shade_smooth()
 
         # 4. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
@@ -206,8 +207,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # Execute the Bake configuration
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 16
-        # --- JULES FIX 2: Lower ray distance so it doesn't cross-bake body parts ---
+
+        # --- JULES FIX 3: Stop the aggressive color bleeding! ---
+        bpy.context.scene.render.bake.margin = 2
+
+        # (Keep the ray distance we set earlier)
         bpy.context.scene.render.bake.max_ray_distance = 0.5
 
         try:
