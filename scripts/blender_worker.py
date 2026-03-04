@@ -1,6 +1,16 @@
 import bpy
 import os
 import sys
+
+# Manually add the standard Windows Addon path to sys.path
+user_addon_path = os.path.expandvars(r'%APPDATA%\Blender Foundation\Blender\5.0\scripts\addons')
+if user_addon_path not in sys.path:
+    sys.path.append(user_addon_path)
+
+# Ensure the addon is actually enabled
+if "quad_remesher_1_4" not in bpy.context.preferences.addons:
+    bpy.ops.preferences.addon_enable(module="quad_remesher_1_4")
+
 import bmesh
 import argparse
 import urllib.parse
