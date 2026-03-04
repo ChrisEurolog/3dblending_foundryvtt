@@ -146,7 +146,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTIONAL', island_margin=0.01)
+        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 4. HIGH-TO-LOW POLY BAKING
@@ -176,17 +176,34 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node # THIS is critical: Blender bakes to the active image node!
 
-        # Select High, then Low (Low must be active)
+        # 1. Clear all current selections to be safe
         bpy.ops.object.select_all(action='DESELECT')
+
+        # 2. Select the High-Poly object first
         high_obj.select_set(True)
+
+        # 3. Select the Low-Poly (Retopo) object second
         low_obj.select_set(True)
+
+        # 4. Make the Low-Poly object the 'Active' one
         bpy.context.view_layer.objects.active = low_obj
 
-        # Execute the Bake
+        # Ensure Cycles engine is selected for baking
+        bpy.context.scene.render.engine = 'CYCLES'
+        bpy.context.scene.cycles.bake_type = 'DIFFUSE'
+
+        # Execute the Bake configuration
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 16
         bpy.context.scene.render.bake.max_ray_distance = 0.02 # 2cm search radius for details
-        bpy.ops.object.bake(type='DIFFUSE', pass_filter={'COLOR'})
+
+        try:
+            # 5. Run the bake
+            bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
+        except Exception as e:
+            print(f"❌ Bake Error: {e}")
+            # Make sure we don't hang if the bake fails!
+            bpy.ops.wm.quit_blender()
 
     # 5. MATTE FINISH & CLEANUP
     print("🔹 Applying Matte Finish and Aligning...")
