@@ -161,8 +161,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # Create the new material for the low-poly token
         baked_mat = bpy.data.materials.new(name="Token_Material")
         baked_mat.use_nodes = True
-        low_obj.data.materials.clear()
-        low_obj.data.materials.append(baked_mat)
 
         nodes = baked_mat.node_tree.nodes
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
@@ -176,16 +174,26 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node # THIS is critical: Blender bakes to the active image node!
 
-        # 1. Clear all current selections to be safe
+        # 1. Unhide the original mesh so Blender allows us to select it
+        high_obj.hide_viewport = False
+        high_obj.hide_set(False)
+
+        # 2. Strip cloned materials from the Retopo mesh to prevent Circular Dependency
+        low_obj.data.materials.clear()
+
+        # 3. Ensure the script applies the new blank baking material HERE
+        low_obj.data.materials.append(baked_mat)
+
+        # 4. Clear all current selections to be safe
         bpy.ops.object.select_all(action='DESELECT')
 
-        # 2. Select the High-Poly object first
+        # 5. Select the High-Poly object first
         high_obj.select_set(True)
 
-        # 3. Select the Low-Poly (Retopo) object second
+        # 6. Select the Low-Poly (Retopo) object second
         low_obj.select_set(True)
 
-        # 4. Make the Low-Poly object the 'Active' one
+        # 7. Make the Low-Poly object the 'Active' one
         bpy.context.view_layer.objects.active = low_obj
 
         # Ensure Cycles engine is selected for baking
