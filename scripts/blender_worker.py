@@ -138,6 +138,14 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        bm.to_mesh(low_obj.data)
+        low_obj.data.update()
+        bm.free()
+
         bpy.ops.object.mode_set(mode='EDIT')
 
         # WELD SEAMS securely via bmesh
@@ -341,7 +349,7 @@ def process():
 
     # Configure Quad Remesher settings
     bpy.context.scene.qremesher.target_count = args.target
-    bpy.context.scene.qremesher.use_materials = False
+    bpy.context.scene.qremesher.use_materials = True
 
     # Ensure High Poly is active and selected
     bpy.ops.object.select_all(action='DESELECT')
