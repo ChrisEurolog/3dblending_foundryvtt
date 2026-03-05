@@ -132,7 +132,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
+        # 1. FIX THE FBX IMPORT DATA
         print("🔹 Cleaning Quad Remesher FBX geometry...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
@@ -140,6 +140,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -169,7 +170,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
-        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node
 
         high_obj.hide_viewport = False
@@ -192,6 +192,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
+
+        # Link the texture AFTER baking to prevent circular dependency errors
+        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
     # 4. MATTE FINISH & ALIGNMENT
     print("🔹 Applying Matte Finish and Aligning...")
