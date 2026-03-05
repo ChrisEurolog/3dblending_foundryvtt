@@ -25,7 +25,7 @@ import json
 import struct
 import time
 
-MERGE_THRESHOLD = 0.0005
+MERGE_THRESHOLD = 0.005
 
 # ==========================================
 # SECURITY & VALIDATION
@@ -132,7 +132,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
+        # 1. FIX THE FBX IMPORT DATA
         print("🔹 Cleaning Quad Remesher FBX geometry...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
@@ -140,7 +140,15 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+
+        # Weld exact overlapping vertices from FBX seam splits
+        import bmesh
+        bm = bmesh.from_edit_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
+        bmesh.update_edit_mesh(low_obj.data)
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+        bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -169,7 +177,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
-        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node
 
         high_obj.hide_viewport = False
@@ -192,6 +199,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
+
+        # Link the texture AFTER baking to prevent circular dependency errors
+        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
     # 4. MATTE FINISH & ALIGNMENT
     print("🔹 Applying Matte Finish and Aligning...")
@@ -335,6 +345,12 @@ def process():
     # Configure Quad Remesher settings
     bpy.context.scene.qremesher.target_count = args.target
     bpy.context.scene.qremesher.use_materials = False
+
+    # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
+    if hasattr(bpy.context.scene.qremesher, 'use_normals'):
+        bpy.context.scene.qremesher.use_normals = False
+    if hasattr(bpy.context.scene.qremesher, 'use_normals_splitting'):
+        bpy.context.scene.qremesher.use_normals_splitting = False
 
     # Ensure High Poly is active and selected
     bpy.ops.object.select_all(action='DESELECT')
