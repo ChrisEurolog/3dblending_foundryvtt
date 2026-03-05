@@ -25,7 +25,7 @@ import json
 import struct
 import time
 
-MERGE_THRESHOLD = 0.0005
+MERGE_THRESHOLD = 0.005
 
 # ==========================================
 # SECURITY & VALIDATION
@@ -360,6 +360,12 @@ def process():
     # Configure Quad Remesher settings
     bpy.context.scene.qremesher.target_count = args.target
     bpy.context.scene.qremesher.use_materials = True
+
+    # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
+    if hasattr(bpy.context.scene.qremesher, 'use_normals'):
+        bpy.context.scene.qremesher.use_normals = False
+    if hasattr(bpy.context.scene.qremesher, 'use_normals_splitting'):
+        bpy.context.scene.qremesher.use_normals_splitting = False
 
     # Ensure High Poly is active and selected
     bpy.ops.object.select_all(action='DESELECT')
