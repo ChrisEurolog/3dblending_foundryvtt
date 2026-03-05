@@ -140,6 +140,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.merge_by_distance(distance=0.0000001) # WELD SEAMS
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
