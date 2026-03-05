@@ -140,13 +140,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-
-        # --- JULES FIX: The hyper-precise threshold! ---
-        # 0.0000001 ensures we ONLY sew the microscopic FBX seams
-        # without accidentally decimating the structural geometry.
-        bpy.ops.mesh.remove_doubles(threshold=0.0000001)
-
-        bpy.ops.mesh.customdata_custom_splitnormals_clear() # Unlock the shading
+        bpy.ops.mesh.merge_by_distance(distance=0.0000001) # WELD SEAMS
+        bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
