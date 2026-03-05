@@ -132,8 +132,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
-        print("🔹 Cleaning Quad Remesher FBX geometry...")
+        # 1. FIX THE FBX IMPORT DATA
+        print("🔹 Welding Quad Remesher FBX seams...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
@@ -145,7 +145,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        # Now that normals are unlocked, this will actually smooth the surface for the bake!
+        # Now that it is a solid, clean object, smooth it for the bake
         bpy.ops.object.shade_smooth()
 
         # 2. AUTO-UV UNWRAP
