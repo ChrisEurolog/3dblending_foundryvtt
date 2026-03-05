@@ -162,6 +162,9 @@ class TestBlenderWorker(unittest.TestCase):
         mock_materials = MagicMock()
         mock_materials.__iter__.return_value = [mock_mat]
         mock_bpy.data.materials = mock_materials
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.materials = mock_materials
 
         # Provide inputs directly since we loop through baked_mat.node_tree.nodes where node.type is not used by default
         # But wait, the test is passing 'mock_bsdf' inside 'mock_mat.node_tree.nodes'.
@@ -177,6 +180,7 @@ class TestBlenderWorker(unittest.TestCase):
         # Setup standard object requirements (copied from test_remove_doubles_threshold logic)
         mock_obj = MagicMock()
         mock_obj.type = 'MESH'
+        mock_obj.data.materials = mock_materials
         mock_obj.data.vertices = [MagicMock()]
         mock_obj.dimensions = (1.0, 1.0, 1.0)
 

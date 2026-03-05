@@ -119,147 +119,105 @@ def build_args():
 def finish_export(args, high_obj, low_obj, used_decimate):
     if not low_obj and used_decimate:
         print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
-        # Fallback to standard decimation if QR fails in headless mode
         low_obj = high_obj.copy()
         low_obj.data = high_obj.data.copy()
         bpy.context.collection.objects.link(low_obj)
         mod = low_obj.modifiers.new(name="Deci", type='DECIMATE')
-
-        verts_len = len(low_obj.data.vertices)
-        if verts_len == 0:
-            verts_len = 1
+        verts_len = max(len(low_obj.data.vertices), 1)
         mod.ratio = max(args.target / verts_len, 0.05)
-
         mod.use_collapse_triangulate = True
-
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
-
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-
-        # --- JULES FIX 1: WELD THE SHARDS FIRST ---
-        print("🔹 Welding Quad Remesher FBX shards...")
+        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
+        print("🔹 Cleaning Quad Remesher FBX geometry...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # This sews the 20,000 disconnected triangles into a single, solid mesh
-        bpy.ops.mesh.remove_doubles(threshold=0.0001)
+        bpy.ops.mesh.remove_doubles(threshold=0.0001) # Weld shards
+        bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        # Now that it is a solid object, we can properly smooth it!
+        # Now that normals are unlocked, this will actually smooth the surface for the bake!
         bpy.ops.object.shade_smooth()
 
-        # 3. AUTO-UV UNWRAP
+        # 2. AUTO-UV UNWRAP
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+        # 0.01 margin gives islands enough room so colors don't bleed into each other
         bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        # 4. HIGH-TO-LOW POLY BAKING
+        # 3. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
         bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.cycles.device = 'GPU'  # Uses GPU if available
-        bpy.context.scene.cycles.samples = 1     # 1 sample is perfect for diffuse color
+        bpy.context.scene.cycles.device = 'GPU'
+        bpy.context.scene.cycles.samples = 1
 
-        # Create the blank canvas for the bake
         baked_image = bpy.data.images.new("Baked_Texture", width=args.maxtex, height=args.maxtex)
-
-        # Create the new material for the low-poly token
         baked_mat = bpy.data.materials.new(name="Token_Material")
         baked_mat.use_nodes = True
 
         nodes = baked_mat.node_tree.nodes
-        bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None)
-        if bsdf is None:
-            bsdf = nodes.get("Principled BSDF")
-        if bsdf is None:
-            bsdf = nodes.new('ShaderNodeBsdfPrincipled')
-
+        bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
         baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
-        nodes.active = tex_node # THIS is critical: Blender bakes to the active image node!
+        nodes.active = tex_node
 
-        # 1. Unhide the original mesh so Blender allows us to select it
         high_obj.hide_viewport = False
         high_obj.hide_set(False)
 
-        # 2. Strip cloned materials from the Retopo mesh to prevent Circular Dependency
         low_obj.data.materials.clear()
-
-        # 3. Ensure the script applies the new blank baking material HERE
         low_obj.data.materials.append(baked_mat)
 
-        # 4. Clear all current selections to be safe
         bpy.ops.object.select_all(action='DESELECT')
-
-        # 5. Select the High-Poly object first
         high_obj.select_set(True)
-
-        # 6. Select the Low-Poly (Retopo) object second
         low_obj.select_set(True)
-
-        # 7. Make the Low-Poly object the 'Active' one
         bpy.context.view_layer.objects.active = low_obj
 
-        # Ensure Cycles engine is selected for baking
-        bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.cycles.bake_type = 'DIFFUSE'
-
-        # Execute the Bake configuration
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 2
-
-        # --- JULES FIX: Reset ray distance to normal scale ---
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        bpy.context.scene.render.bake.margin = 8 # Bleed past seams slightly to prevent black lines
+        bpy.context.scene.render.bake.max_ray_distance = 0.02 # Standard 2cm search radius
 
         try:
-            # 5. Run the bake
             bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
         except Exception as e:
             print(f"❌ Bake Error: {e}")
-            # Make sure we don't hang if the bake fails!
             bpy.ops.wm.quit_blender()
 
-    # 5. MATTE FINISH & CLEANUP
+    # 4. MATTE FINISH & ALIGNMENT
     print("🔹 Applying Matte Finish and Aligning...")
-    # --- JULES FIX 3: Do NOT delete the high_obj here. Just deselect and hide it. ---
+    # Safely hide the high-poly so it doesn't export
     high_obj.select_set(False)
     high_obj.hide_viewport = True
     high_obj.hide_render = True
 
     if args.matte == 1:
-        # We also want to apply mattening to existing materials on other objects if needed,
-        # but in this script, everything is merged and baked to baked_mat
-        for mat in bpy.data.materials:
+        for mat in low_obj.data.materials:
             if mat.use_nodes:
                 mat_nodes = mat.node_tree.nodes
-                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None)
-                if mat_bsdf is None:
-                    mat_bsdf = mat_nodes.get("Principled BSDF")
+                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
                 if mat_bsdf:
                     if 'Metallic' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Metallic'].default_value = 0.0
-                        for link in mat_bsdf.inputs['Metallic'].links:
-                            mat.node_tree.links.remove(link)
+                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
                     if 'Roughness' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Roughness'].default_value = 0.8
-                        for link in mat_bsdf.inputs['Roughness'].links:
-                            mat.node_tree.links.remove(link)
-
+                        for link in mat_bsdf.inputs['Roughness'].links: mat.node_tree.links.remove(link)
                     if 'Coat Weight' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Coat Weight'].default_value = 0.01
                     elif 'Coat' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Coat'].default_value = 0.01
 
-    # Foundry Floor Alignment
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
 
@@ -278,44 +236,19 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                 low_obj.scale = (scale_factor, scale_factor, scale_factor)
                 bpy.ops.object.transform_apply(scale=True)
 
-    # --- JULES: DELETE OR COMMENT OUT THIS ENTIRE BLOCK ---
-
-    # Cleanup pass
-    # bpy.ops.object.select_all(action='DESELECT')
-    # low_obj.select_set(True)
-    # bpy.context.view_layer.objects.active = low_obj
-
-    # bpy.ops.object.mode_set(mode='EDIT')
-    # bpy.ops.mesh.select_all(action='SELECT')
-    # bpy.ops.mesh.remove_doubles(threshold=0.0001)
-    # bpy.ops.mesh.delete_loose()
-    # bpy.ops.mesh.customdata_custom_splitnormals_clear()
-    # bpy.ops.mesh.normals_make_consistent(inside=False)
-    # bpy.ops.object.mode_set(mode='OBJECT')
-    # bpy.ops.object.shade_smooth()
-
-    # ------------------------------------------------------
-
-    # REMOVE THIS BLOCK
-    # Shrink the Retopo model back to VTT miniature scale
-    # bpy.context.view_layer.objects.active = low_obj
-    # low_obj.scale = (0.001, 0.001, 0.001)
-    # bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-    # 6. EXPORT
+    # 5. EXPORT
     print("🔹 Exporting Final VTT Token...")
+    bpy.ops.object.select_all(action='DESELECT')
+    low_obj.select_set(True)
 
-    # --- JULES FIX: Add 'use_selection=True' so it ignores the hidden giant! ---
     bpy.ops.export_scene.gltf(
         filepath=args.output,
         export_format='GLB',
         export_apply=True,
         use_selection=True
     )
-
     print("✅ Success!")
 
-    # Hand control back to the caller
     bpy.ops.wm.quit_blender()
 
 def process():
