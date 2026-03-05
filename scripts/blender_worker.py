@@ -184,7 +184,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
-        bpy.context.scene.render.bake.bake_type = 'DIFFUSE'
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 8 # Bleed past seams slightly to prevent black lines
         bpy.context.scene.render.bake.max_ray_distance = 0.02 # Standard 2cm search radius
