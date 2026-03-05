@@ -174,15 +174,16 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # 0.01 margin gives islands enough room so colors don't bleed into each other
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
+        # 0.001 fractional margin provides roughly 2 pixels of padding at 2048x2048,
+        # maximizing texel density while still preventing bleeding.
+        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.001)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 1
+        bpy.context.scene.cycles.samples = 16
 
         baked_image = bpy.data.images.new("Baked_Texture", width=args.maxtex, height=args.maxtex)
         baked_mat = bpy.data.materials.new(name="Token_Material")
