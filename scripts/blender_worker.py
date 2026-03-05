@@ -25,7 +25,7 @@ import json
 import struct
 import time
 
-MERGE_THRESHOLD = 0.0005
+MERGE_THRESHOLD = 0.0001
 
 # ==========================================
 # SECURITY & VALIDATION
@@ -132,7 +132,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
+        # 1. FIX THE FBX IMPORT DATA
         print("🔹 Cleaning Quad Remesher FBX geometry...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
@@ -140,7 +140,15 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+
+        # Weld exact overlapping vertices from FBX seam splits
+        import bmesh
+        bm = bmesh.from_edit_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
+        bmesh.update_edit_mesh(low_obj.data)
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+        bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -151,15 +159,16 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # 0.01 margin gives islands enough room so colors don't bleed into each other
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
+        # 0.001 fractional margin provides roughly 2 pixels of padding at 2048x2048,
+        # maximizing texel density while still preventing bleeding.
+        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.001)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 1
+        bpy.context.scene.cycles.samples = 16
 
         baked_image = bpy.data.images.new("Baked_Texture", width=args.maxtex, height=args.maxtex)
         baked_mat = bpy.data.materials.new(name="Token_Material")
@@ -169,7 +178,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
-        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node
 
         high_obj.hide_viewport = False
@@ -192,6 +200,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
+
+        # Link the texture AFTER baking to prevent circular dependency errors
+        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
     # 4. MATTE FINISH & ALIGNMENT
     print("🔹 Applying Matte Finish and Aligning...")
@@ -302,24 +313,36 @@ def process():
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     # ---------------------------------------
 
-    # --- JULES FIX 4: Disable destructive vertex cleanup entirely! ---
-    # Ensure we are in edit mode
+    # Check for non-manifold geometry and harden it with Voxel Remesh if needed
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     import bmesh
     bm = bmesh.from_edit_mesh(bpy.context.edit_object.data)
+
+    # Analyze non-manifold edges
+    non_manifold_edges = [e for e in bm.edges if not e.is_manifold]
+    has_non_manifold = len(non_manifold_edges) > 0
     verts_before = len(bm.verts)
 
-    # safe_threshold = 0.000001
-    # bpy.ops.mesh.remove_doubles(threshold=safe_threshold)
-    # bm.verts.ensure_lookup_table()
-    # verts_after = len(bm.verts)
-    # print(f"🔹 Cleanup removed {verts_before - verts_after} overlapping vertices.")
     print(f"🔹 Preserving all {verts_before} high-poly vertices for baking.")
 
-    # Apply scale before remeshing to prevent Exoside errors
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    # Create a hardened duplicate specifically for Quad Remesher to process
+    # This prevents the original high-poly from losing UVs/Textures needed for baking
+    harden_obj = high_obj.copy()
+    harden_obj.data = high_obj.data.copy()
+    bpy.context.collection.objects.link(harden_obj)
+    harden_obj.name = "HighPoly_Hardened"
+
+    if has_non_manifold:
+        print(f"⚠️ Non-manifold geometry detected ({len(non_manifold_edges)} edges). Hardening geometry via Voxel Remesh...")
+        bpy.context.view_layer.objects.active = harden_obj
+        mod = harden_obj.modifiers.new(name="VoxelRemesh", type='REMESH')
+        mod.mode = 'VOXEL'
+        mod.voxel_size = 0.005 # Detailed enough for a 1.0 unit model
+        bpy.ops.object.modifier_apply(modifier="VoxelRemesh")
 
     # 2. THE SCULPT (Quad Remesher)
     print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
@@ -336,10 +359,16 @@ def process():
     bpy.context.scene.qremesher.target_count = args.target
     bpy.context.scene.qremesher.use_materials = False
 
-    # Ensure High Poly is active and selected
+    # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
+    if hasattr(bpy.context.scene.qremesher, 'use_normals'):
+        bpy.context.scene.qremesher.use_normals = False
+    if hasattr(bpy.context.scene.qremesher, 'use_normals_splitting'):
+        bpy.context.scene.qremesher.use_normals_splitting = False
+
+    # Ensure Hardened Object is active and selected for Quad Remesher
     bpy.ops.object.select_all(action='DESELECT')
-    high_obj.select_set(True)
-    bpy.context.view_layer.objects.active = high_obj
+    harden_obj.select_set(True)
+    bpy.context.view_layer.objects.active = harden_obj
 
     # REMOVE THIS BLOCK
     # Temporarily make the model massive for the Exoside engine
@@ -366,6 +395,10 @@ def process():
             if retopo_name in bpy.data.objects:
                 print("✅ Quad Remesher successful!")
                 low_obj = bpy.data.objects[retopo_name]
+
+                # Cleanup the hardened object since Quad Remesher is done with it
+                bpy.data.objects.remove(harden_obj, do_unlink=True)
+
                 # Ensure the new object is the active one for the export phase
                 bpy.context.view_layer.objects.active = low_obj
                 finish_export(args, high_obj, low_obj, used_decimate=False)
@@ -389,11 +422,13 @@ def process():
                 time.sleep(0.5)
             if not low_obj:
                 used_decimate = True
+                bpy.data.objects.remove(harden_obj, do_unlink=True)
             finish_export(args, high_obj, low_obj, used_decimate)
         else:
             bpy.app.timers.register(check_retopo)
 
     except RuntimeError as e:
+        bpy.data.objects.remove(harden_obj, do_unlink=True)
         if "expected class QREMESHER_OT_remesh" in str(e):
             print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
             used_decimate = True
@@ -401,6 +436,7 @@ def process():
         else:
             raise e
     except Exception as e:
+        bpy.data.objects.remove(harden_obj, do_unlink=True)
         print(f"❌ Error during remeshing: {e}")
         used_decimate = True
         finish_export(args, high_obj, low_obj=None, used_decimate=True)
