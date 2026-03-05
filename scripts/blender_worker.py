@@ -186,7 +186,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 8 # Bleed past seams slightly to prevent black lines
-        bpy.context.scene.render.bake.max_ray_distance = 0.02 # Standard 2cm search radius
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         try:
             bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
@@ -226,15 +226,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bottom_z = min((low_obj.matrix_world @ v.co).z for v in verts)
         low_obj.location.z -= bottom_z
         bpy.ops.object.transform_apply(location=True)
-
-    if args.normalize == 1:
-        dims = list(low_obj.dimensions) if hasattr(low_obj.dimensions, '__iter__') else []
-        if dims:
-            max_dim = max(dims)
-            if max_dim > 0:
-                scale_factor = 1.0 / max_dim
-                low_obj.scale = (scale_factor, scale_factor, scale_factor)
-                bpy.ops.object.transform_apply(scale=True)
 
     # 5. EXPORT
     print("🔹 Exporting Final VTT Token...")
@@ -296,6 +287,21 @@ def process():
     bpy.ops.object.join()
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
+
+    # --- JULES: INSERT SURGICAL FIX HERE ---
+    # Center the origin and normalize to exactly 1.0 unit
+    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+    high_obj.location = (0, 0, 0)
+
+    dims = list(high_obj.dimensions) if hasattr(high_obj.dimensions, '__iter__') else []
+    if dims:
+        max_dim = max(dims)
+        if max_dim > 0:
+            scale_factor = 1.0 / max_dim
+            high_obj.scale = (scale_factor, scale_factor, scale_factor)
+
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    # ---------------------------------------
 
     # --- JULES FIX 4: Disable destructive vertex cleanup entirely! ---
     # Ensure we are in edit mode
