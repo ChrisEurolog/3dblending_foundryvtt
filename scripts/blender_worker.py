@@ -138,6 +138,14 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        bm.to_mesh(low_obj.data)
+        low_obj.data.update()
+        bm.free()
+
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
@@ -169,7 +177,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
-        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node
 
         high_obj.hide_viewport = False
@@ -192,6 +199,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
+
+        # Link the texture AFTER baking to prevent circular dependency errors
+        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
     # 4. MATTE FINISH & ALIGNMENT
     print("🔹 Applying Matte Finish and Aligning...")
@@ -334,7 +344,7 @@ def process():
 
     # Configure Quad Remesher settings
     bpy.context.scene.qremesher.target_count = args.target
-    bpy.context.scene.qremesher.use_materials = False
+    bpy.context.scene.qremesher.use_materials = True
 
     # Ensure High Poly is active and selected
     bpy.ops.object.select_all(action='DESELECT')
