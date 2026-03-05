@@ -132,19 +132,25 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
-        print("🔹 Cleaning Quad Remesher FBX geometry...")
+        # 1. FIX THE FBX IMPORT DATA
+        print("🔹 Welding Quad Remesher FBX seams...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+
+        # --- JULES FIX: The hyper-precise threshold! ---
+        # 0.0000001 ensures we ONLY sew the microscopic FBX seams
+        # without accidentally decimating the structural geometry.
+        bpy.ops.mesh.remove_doubles(threshold=0.0000001)
+
+        bpy.ops.mesh.customdata_custom_splitnormals_clear() # Unlock the shading
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        # Now that normals are unlocked, this will actually smooth the surface for the bake!
+        # Now that it is a solid, clean object, smooth it for the bake
         bpy.ops.object.shade_smooth()
 
         # 2. AUTO-UV UNWRAP
