@@ -132,7 +132,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
+        # 1. FIX THE FBX IMPORT DATA
         print("🔹 Cleaning Quad Remesher FBX geometry...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
@@ -155,6 +155,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bmesh.update_edit_mesh(low_obj.data)
 
         bpy.ops.mesh.select_all(action='SELECT')
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
