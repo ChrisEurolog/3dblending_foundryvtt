@@ -217,9 +217,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 2
 
-        # --- JULES FIX 2: The Goldilocks Ray Distance ---
-        # 5.0 was too big, 0.5 was too small.
-        bpy.context.scene.render.bake.max_ray_distance = 1.5
+        # --- JULES FIX: Reset ray distance to normal scale ---
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         try:
             # 5. Run the bake
@@ -297,15 +296,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
     # ------------------------------------------------------
 
+    # REMOVE THIS BLOCK
     # Shrink the Retopo model back to VTT miniature scale
-    bpy.context.view_layer.objects.active = low_obj
-    low_obj.scale = (0.001, 0.001, 0.001)
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
-    # Shrink the Retopo model back to VTT miniature scale
-    bpy.context.view_layer.objects.active = low_obj
-    low_obj.scale = (0.001, 0.001, 0.001)
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    # bpy.context.view_layer.objects.active = low_obj
+    # low_obj.scale = (0.001, 0.001, 0.001)
+    # bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
     # 6. EXPORT
     print("🔹 Exporting Final VTT Token...")
@@ -408,10 +403,11 @@ def process():
     high_obj.select_set(True)
     bpy.context.view_layer.objects.active = high_obj
 
+    # REMOVE THIS BLOCK
     # Temporarily make the model massive for the Exoside engine
-    bpy.context.view_layer.objects.active = high_obj
-    high_obj.scale = (1000.0, 1000.0, 1000.0)
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    # bpy.context.view_layer.objects.active = high_obj
+    # high_obj.scale = (1000.0, 1000.0, 1000.0)
+    # bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
     # Execute Remesh
     used_decimate = False
