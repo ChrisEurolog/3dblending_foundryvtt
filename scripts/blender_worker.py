@@ -156,6 +156,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.select_all(action='SELECT')
 
+        # Weld exact overlapping vertices from FBX seam splits
+        import bmesh
+        bm = bmesh.from_edit_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        bmesh.update_edit_mesh(low_obj.data)
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
