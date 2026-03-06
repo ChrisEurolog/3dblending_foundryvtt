@@ -158,10 +158,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # 2. AUTO-UV UNWRAP
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        # Select sharp edges to mark as seams (60 degrees = ~1.047 radians)
+        bpy.ops.mesh.edges_select_sharp(sharpness=1.0472)
+        bpy.ops.mesh.mark_seam(clear=False)
         bpy.ops.mesh.select_all(action='SELECT')
-        # 0.01 fractional margin ensures a healthy gap between islands
-        # and prevents cross-island bleeding when combined with the 8 pixel bake margin.
-        bpy.ops.uv.smart_project(angle_limit=1.52, margin_method='FRACTION', island_margin=0.01, area_weight=0.1)
+        # Unwrap with 0.005 margin to maximize texture space while preventing bleed
+        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0.005)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
@@ -193,7 +196,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 8 # Bleed past seams slightly to prevent black lines
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        bpy.context.scene.render.bake.max_ray_distance = 0.015
 
         try:
             bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
