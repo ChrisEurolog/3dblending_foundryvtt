@@ -161,7 +161,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.mesh.select_all(action='SELECT')
         # 0.01 fractional margin ensures a healthy gap between islands
         # and prevents cross-island bleeding when combined with the 8 pixel bake margin.
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
+        bpy.ops.uv.smart_project(angle_limit=1.52, margin_method='FRACTION', island_margin=0.01, area_weight=0.1)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
