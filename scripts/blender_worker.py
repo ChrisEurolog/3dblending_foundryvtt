@@ -201,6 +201,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
+        # Pack the image into the blend file so the glTF exporter recognizes it
+        baked_image.pack()
+
         # Link the texture AFTER baking to prevent circular dependency errors
         baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
