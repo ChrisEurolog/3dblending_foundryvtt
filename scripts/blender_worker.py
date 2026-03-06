@@ -163,8 +163,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.mesh.edges_select_sharp(sharpness=1.0472)
         bpy.ops.mesh.mark_seam(clear=False)
         bpy.ops.mesh.select_all(action='SELECT')
-        # Unwrap with 0.005 margin to maximize texture space while preventing bleed
-        bpy.ops.uv.unwrap(method='ANGLE_BASED', margin=0.005)
+        # Smart project with 66 degree limit (~1.15 radians) to break up organic shapes
+        # Use Blender 5.0+ margin_method='FRACTION' and island_margin=0.01 per memory
+        bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
