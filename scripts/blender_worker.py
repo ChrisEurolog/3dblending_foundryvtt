@@ -117,6 +117,7 @@ def build_args():
 # PIPELINE EXECUTION
 # ==========================================
 def finish_export(args, high_obj, low_obj, used_decimate):
+    temp_img_path = None
     if not low_obj and used_decimate:
         print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
         low_obj = high_obj.copy()
@@ -201,8 +202,19 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Pack the image into the blend file so the glTF exporter recognizes it
-        baked_image.pack()
+        # Save the baked image to a temporary file so the glTF exporter can reliably find and embed it
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+
+        temp_img_path = os.path.join(temp_dir, f"Baked_Texture_{int(time.time())}.png")
+        baked_image.filepath_raw = temp_img_path
+        baked_image.file_format = 'PNG'
+        baked_image.save()
+        print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
+
+        # Now re-load it from disk to ensure it behaves exactly like an external texture for glTF export
+        loaded_image = bpy.data.images.load(temp_img_path)
+        tex_node.image = loaded_image
 
         # Link the texture AFTER baking to prevent circular dependency errors
         baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
@@ -252,6 +264,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         use_selection=True
     )
     print("✅ Success!")
+
+    if temp_img_path and os.path.exists(temp_img_path):
+        try:
+            os.remove(temp_img_path)
+            print(f"🔹 Cleaned up temporary texture: {temp_img_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to remove temporary texture: {e}")
 
     bpy.ops.wm.quit_blender()
 
