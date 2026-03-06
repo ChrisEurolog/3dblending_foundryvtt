@@ -158,14 +158,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # 2. AUTO-UV UNWRAP
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='DESELECT')
-        # Select sharp edges to mark as seams (60 degrees = ~1.047 radians)
-        bpy.ops.mesh.edges_select_sharp(sharpness=1.0472)
-        bpy.ops.mesh.mark_seam(clear=False)
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 66 degree limit (~1.15 radians) to break up organic shapes
-        # Use Blender 5.0+ margin_method='FRACTION' and island_margin=0.01 per memory
-        bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.01)
+        # Use island_margin=0.03 to ensure sufficient gap for the bake margin to bleed without overwriting adjacent islands
+        bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.03)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
@@ -196,8 +192,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Bleed past seams slightly to prevent black lines
-        bpy.context.scene.render.bake.max_ray_distance = 0.015
+        bpy.context.scene.render.bake.margin = 4 # Reduce from 8 to 4 to prevent overlapping bleeds
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         try:
             bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
