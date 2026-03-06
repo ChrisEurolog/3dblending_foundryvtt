@@ -158,6 +158,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # 2. AUTO-UV UNWRAP
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='DESELECT')
+        # Select sharp edges to mark as seams (60 degrees = ~1.047 radians)
+        bpy.ops.mesh.edges_select_sharp(sharpness=1.0472)
+        bpy.ops.mesh.mark_seam(clear=False)
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 66 degree limit (~1.15 radians) to break up organic shapes
         # Use Blender 5.0+ margin_method='FRACTION' and island_margin=0.01 per memory
