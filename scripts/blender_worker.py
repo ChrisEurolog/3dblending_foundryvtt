@@ -180,6 +180,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
         nodes.active = tex_node
+        tex_node.select = True
 
         high_obj.hide_viewport = False
         high_obj.hide_set(False)
@@ -214,6 +215,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # Now re-load it from disk to ensure it behaves exactly like an external texture for glTF export
         loaded_image = bpy.data.images.load(temp_img_path)
+        # Force the loaded image to be packed into the current blend file memory.
+        # This is critical for headless glTF export because without a saved .blend file,
+        # the exporter cannot resolve absolute paths in the temp directory and will fail to embed the texture.
+        loaded_image.pack()
         tex_node.image = loaded_image
 
         # Link the texture AFTER baking to prevent circular dependency errors
