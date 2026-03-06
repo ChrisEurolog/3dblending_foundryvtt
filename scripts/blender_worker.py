@@ -25,7 +25,7 @@ import json
 import struct
 import time
 
-MERGE_THRESHOLD = 0.0001
+MERGE_THRESHOLD = 0.0000001
 
 # ==========================================
 # SECURITY & VALIDATION
@@ -138,22 +138,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         low_obj.select_set(True)
         bpy.context.view_layer.objects.active = low_obj
 
-        import bmesh
-        bm = bmesh.new()
-        bm.from_mesh(low_obj.data)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
-        bm.to_mesh(low_obj.data)
-        low_obj.data.update()
-        bm.free()
-
         bpy.ops.object.mode_set(mode='EDIT')
-
-        # WELD SEAMS securely via bmesh
-        import bmesh
-        bm = bmesh.from_edit_mesh(low_obj.data)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0000001)
-        bmesh.update_edit_mesh(low_obj.data)
-
         bpy.ops.mesh.select_all(action='SELECT')
 
         # Weld exact overlapping vertices from FBX seam splits
@@ -174,9 +159,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # 0.001 fractional margin provides roughly 2 pixels of padding at 2048x2048,
-        # maximizing texel density while still preventing bleeding.
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.001)
+        # 0.01 fractional margin ensures a healthy gap between islands
+        # and prevents cross-island bleeding when combined with the 8 pixel bake margin.
+        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 3. HIGH-TO-LOW POLY BAKING
@@ -372,13 +357,7 @@ def process():
 
     # Configure Quad Remesher settings
     bpy.context.scene.qremesher.target_count = args.target
-    bpy.context.scene.qremesher.use_materials = True
-
-    # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
-    if hasattr(bpy.context.scene.qremesher, 'use_normals'):
-        bpy.context.scene.qremesher.use_normals = False
-    if hasattr(bpy.context.scene.qremesher, 'use_normals_splitting'):
-        bpy.context.scene.qremesher.use_normals_splitting = False
+    bpy.context.scene.qremesher.use_materials = False
 
     # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
     if hasattr(bpy.context.scene.qremesher, 'use_normals'):
