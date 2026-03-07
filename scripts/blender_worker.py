@@ -165,6 +165,25 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.03)
         bpy.ops.object.mode_set(mode='OBJECT')
 
+        # 2.5 NORMALIZE HIGH-POLY MATERIALS FOR BAKING
+        print("🔹 Normalizing High-Poly PBR for clean Albedo bake...")
+        # If high_obj has metallic materials, the DIFFUSE color bake will be black/grey.
+        # We must zero out Metallic and other interfering PBR properties before baking.
+        for mat in high_obj.data.materials:
+            if mat and mat.use_nodes:
+                mat_nodes = mat.node_tree.nodes
+                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
+                if mat_bsdf:
+                    if 'Metallic' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Metallic'].default_value = 0.0
+                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
+                    if 'Transmission' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Transmission'].default_value = 0.0
+                        for link in mat_bsdf.inputs['Transmission'].links: mat.node_tree.links.remove(link)
+                    if 'Alpha' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Alpha'].default_value = 1.0
+                        for link in mat_bsdf.inputs['Alpha'].links: mat.node_tree.links.remove(link)
+
         # 3. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
         bpy.context.scene.render.engine = 'CYCLES'
@@ -201,6 +220,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.margin = 4 # Reduce from 8 to 4 to prevent overlapping bleeds
         bpy.context.scene.render.bake.max_ray_distance = 0.05
 
+        # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
+        # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
+        # actual lighting (which is zero) and output a black/grey image.
+        bpy.context.scene.render.bake.use_pass_direct = False
+        bpy.context.scene.render.bake.use_pass_indirect = False
+        bpy.context.scene.render.bake.use_pass_color = True
+
         try:
             bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
         except Exception as e:
@@ -219,6 +245,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # Now re-load it from disk to ensure it behaves exactly like an external texture for glTF export
         loaded_image = bpy.data.images.load(temp_img_path)
+
+        # Force the loaded image to be packed into the current blend file memory.
+        # This guarantees the glTF exporter embeds it, bypassing any external path resolution issues.
+        loaded_image.pack()
         tex_node.image = loaded_image
 
         # Link the texture AFTER baking to prevent circular dependency errors
