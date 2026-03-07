@@ -86,6 +86,32 @@ class TestMainPipeline(unittest.TestCase):
         files = mp.get_files_to_process("single", "some/path/to/file", "/source")
         self.assertEqual(files, ["file.glb"])
 
+    def test_get_processing_mode_args_provided(self):
+        """Test get_processing_mode when args.mode is provided."""
+        self.assertEqual(mp.get_processing_mode("single"), "single")
+        self.assertEqual(mp.get_processing_mode("batch"), "batch")
+        self.assertEqual(mp.get_processing_mode("meshy"), "meshy")
+
+    @patch('builtins.input', return_value="1")
+    def test_get_processing_mode_input_1(self, mock_input):
+        """Test get_processing_mode with user input '1'."""
+        self.assertEqual(mp.get_processing_mode(None), "single")
+
+    @patch('builtins.input', return_value="2")
+    def test_get_processing_mode_input_2(self, mock_input):
+        """Test get_processing_mode with user input '2'."""
+        self.assertEqual(mp.get_processing_mode(None), "batch")
+
+    @patch('builtins.input', return_value="3")
+    def test_get_processing_mode_input_3(self, mock_input):
+        """Test get_processing_mode with user input '3'."""
+        self.assertEqual(mp.get_processing_mode(None), "meshy")
+
+    @patch('builtins.input', return_value="4")
+    def test_get_processing_mode_input_invalid(self, mock_input):
+        """Test get_processing_mode with invalid user input (defaults to 'single')."""
+        self.assertEqual(mp.get_processing_mode(None), "single")
+
     @patch('os.listdir')
     def test_get_files_to_process_batch(self, mock_listdir):
         """Test batch mode filtering for .glb files."""
