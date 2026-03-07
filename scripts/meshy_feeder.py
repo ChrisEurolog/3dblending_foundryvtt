@@ -23,6 +23,10 @@ PIPELINE_SCRIPT = './scripts/main_pipeline.py'
 TARGET_POLYCOUNT = 60000
 TEXTURE_RES = "2048"
 
+# Security: Timeouts for API and file downloads to prevent hanging
+API_TIMEOUT = 30
+DOWNLOAD_TIMEOUT = 120
+
 # ==========================================
 def get_base64_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -42,7 +46,7 @@ def create_meshy_task(image_data_uri):
         "topology": "quad"  # Quads for smooth Blender decimation!
     }
 
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload, timeout=API_TIMEOUT)
     if response.status_code == 202:
         return response.json()['result']
     print(f"❌ Error creating task: {response.text}")
@@ -54,12 +58,12 @@ def download_model(task_id, filename):
 
     print(f"⏳ Meshy is sculpting {filename}... (Usually 1-3 mins)")
     while True:
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=headers, timeout=API_TIMEOUT)
         status = response.json().get('status')
 
         if status == 'SUCCEEDED':
             model_url = response.json()['model_urls']['glb']
-            model_data = requests.get(model_url).content
+            model_data = requests.get(model_url, timeout=DOWNLOAD_TIMEOUT).content
 
             output_path = os.path.join(EXPORT_DIR, f"{os.path.splitext(filename)[0]}.glb")
             with open(output_path, 'wb') as f:
