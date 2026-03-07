@@ -307,7 +307,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
     verts = list(low_obj.data.vertices)
     if verts:
-        bottom_z = min((low_obj.matrix_world @ v.co).z for v in verts)
+        mw = low_obj.matrix_world
+        bottom_z = min((mw @ v.co).z for v in verts)
         low_obj.location.z -= bottom_z
         bpy.ops.object.transform_apply(location=True)
 
