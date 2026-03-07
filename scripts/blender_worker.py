@@ -161,28 +161,31 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 66 degree limit (~1.15 radians) to break up organic shapes
-        # Use island_margin=0.03 to ensure sufficient gap for the bake margin to bleed without overwriting adjacent islands
-        bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.03)
+        bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        # 2.5 NORMALIZE HIGH-POLY MATERIALS FOR BAKING
-        print("🔹 Normalizing High-Poly PBR for clean Albedo bake...")
-        # If high_obj has metallic materials, the DIFFUSE color bake will be black/grey.
-        # We must zero out Metallic and other interfering PBR properties before baking.
+        # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
+        print("🔹 Converting High-Poly materials to Emission for pure Albedo bake...")
         for mat in high_obj.data.materials:
             if mat and mat.use_nodes:
                 mat_nodes = mat.node_tree.nodes
                 mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
-                if mat_bsdf:
-                    if 'Metallic' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Metallic'].default_value = 0.0
-                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
-                    if 'Transmission' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Transmission'].default_value = 0.0
-                        for link in mat_bsdf.inputs['Transmission'].links: mat.node_tree.links.remove(link)
-                    if 'Alpha' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Alpha'].default_value = 1.0
-                        for link in mat_bsdf.inputs['Alpha'].links: mat.node_tree.links.remove(link)
+                mat_output = next((n for n in mat_nodes if n.type == 'OUTPUT_MATERIAL'), None) or mat_nodes.get("Material Output")
+
+                if mat_bsdf and mat_output:
+                    # Create emission node to bypass all PBR lighting/metallic issues during bake
+                    emit_node = mat_nodes.new('ShaderNodeEmission')
+
+                    # See if anything is connected to Base Color
+                    base_color_input = mat_bsdf.inputs.get('Base Color')
+                    if base_color_input and base_color_input.is_linked:
+                        link = base_color_input.links[0]
+                        mat.node_tree.links.new(link.from_socket, emit_node.inputs['Color'])
+                    else:
+                        emit_node.inputs['Color'].default_value = base_color_input.default_value if base_color_input else (1.0, 1.0, 1.0, 1.0)
+
+                    # Connect emission directly to output
+                    mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
@@ -201,9 +204,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         nodes.active = tex_node
         tex_node.select = True
 
-        # Explicitly create and link a UV Map node to guarantee glTF exporter finds the coordinates
-        uv_node = nodes.new('ShaderNodeUVMap')
-        baked_mat.node_tree.links.new(uv_node.outputs['UV'], tex_node.inputs['Vector'])
+        # We removed the ShaderNodeUVMap here because unconfigured UV maps break the glTF exporter.
+        # The exporter will automatically use the active UV map for the ShaderNodeTexImage.
 
         high_obj.hide_viewport = False
         high_obj.hide_set(False)
@@ -217,7 +219,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 4 # Reduce from 8 to 4 to prevent overlapping bleeds
+        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
         bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
@@ -228,7 +230,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_pass_color = True
 
         try:
-            bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
+            # Bake EMIT to capture pure Albedo bypassing all lighting and PBR calculations
+            bpy.ops.object.bake(type='EMIT', use_selected_to_active=True)
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
@@ -277,6 +280,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                         mat_bsdf.inputs['Coat Weight'].default_value = 0.01
                     elif 'Coat' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Coat'].default_value = 0.01
+
+                    # Force Specular to 0.0 to prevent any default shininess!
+                    if 'Specular IOR Level' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Specular IOR Level'].default_value = 0.0
+                    elif 'Specular' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Specular'].default_value = 0.0
 
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
