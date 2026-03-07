@@ -222,6 +222,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
         bpy.context.scene.render.bake.max_ray_distance = 0.05
 
+        # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
+        # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
+        # actual lighting (which is zero) and output a black/grey image.
+        bpy.context.scene.render.bake.use_pass_direct = False
+        bpy.context.scene.render.bake.use_pass_indirect = False
+        bpy.context.scene.render.bake.use_pass_color = True
+
         try:
             # Bake EMIT to capture pure Albedo bypassing all lighting and PBR calculations
             bpy.ops.object.bake(type='EMIT', use_selected_to_active=True)
