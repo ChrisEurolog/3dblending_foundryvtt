@@ -458,12 +458,6 @@ def process():
     harden_obj.select_set(True)
     bpy.context.view_layer.objects.active = harden_obj
 
-    # REMOVE THIS BLOCK
-    # Temporarily make the model massive for the Exoside engine
-    # bpy.context.view_layer.objects.active = high_obj
-    # high_obj.scale = (1000.0, 1000.0, 1000.0)
-    # bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-
     # Execute Remesh
     used_decimate = False
     low_obj = None
