@@ -25,7 +25,7 @@ import json
 import struct
 import time
 
-MERGE_THRESHOLD = 0.0005
+MERGE_THRESHOLD = 0.0000001
 
 # ==========================================
 # SECURITY & VALIDATION
@@ -117,6 +117,7 @@ def build_args():
 # PIPELINE EXECUTION
 # ==========================================
 def finish_export(args, high_obj, low_obj, used_decimate):
+    temp_img_path = None
     if not low_obj and used_decimate:
         print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
         low_obj = high_obj.copy()
@@ -132,7 +133,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.modifier_apply(modifier="Deci")
 
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA (The true fix for the shattered textures)
+        # 1. FIX THE FBX IMPORT DATA
         print("🔹 Cleaning Quad Remesher FBX geometry...")
         bpy.ops.object.select_all(action='DESELECT')
         low_obj.select_set(True)
@@ -140,7 +141,15 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
+
+        # Weld exact overlapping vertices from FBX seam splits
+        import bmesh
+        bm = bmesh.from_edit_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
+        bmesh.update_edit_mesh(low_obj.data)
+
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+        bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
         bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -151,15 +160,35 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # 0.01 margin gives islands enough room so colors don't bleed into each other
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='FRACTION', island_margin=0.01)
+        # Smart project with 66 degree limit (~1.15 radians) to break up organic shapes
+        # Use island_margin=0.03 to ensure sufficient gap for the bake margin to bleed without overwriting adjacent islands
+        bpy.ops.uv.smart_project(angle_limit=1.1519, margin_method='FRACTION', island_margin=0.03)
         bpy.ops.object.mode_set(mode='OBJECT')
+
+        # 2.5 NORMALIZE HIGH-POLY MATERIALS FOR BAKING
+        print("🔹 Normalizing High-Poly PBR for clean Albedo bake...")
+        # If high_obj has metallic materials, the DIFFUSE color bake will be black/grey.
+        # We must zero out Metallic and other interfering PBR properties before baking.
+        for mat in high_obj.data.materials:
+            if mat and mat.use_nodes:
+                mat_nodes = mat.node_tree.nodes
+                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
+                if mat_bsdf:
+                    if 'Metallic' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Metallic'].default_value = 0.0
+                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
+                    if 'Transmission' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Transmission'].default_value = 0.0
+                        for link in mat_bsdf.inputs['Transmission'].links: mat.node_tree.links.remove(link)
+                    if 'Alpha' in mat_bsdf.inputs:
+                        mat_bsdf.inputs['Alpha'].default_value = 1.0
+                        for link in mat_bsdf.inputs['Alpha'].links: mat.node_tree.links.remove(link)
 
         # 3. HIGH-TO-LOW POLY BAKING
         print(f"🔹 Baking High-Def Textures ({args.maxtex}x{args.maxtex})...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 1
+        bpy.context.scene.cycles.samples = 16
 
         baked_image = bpy.data.images.new("Baked_Texture", width=args.maxtex, height=args.maxtex)
         baked_mat = bpy.data.materials.new(name="Token_Material")
@@ -169,8 +198,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
-        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
         nodes.active = tex_node
+        tex_node.select = True
+
+        # Explicitly create and link a UV Map node to guarantee glTF exporter finds the coordinates
+        uv_node = nodes.new('ShaderNodeUVMap')
+        baked_mat.node_tree.links.new(uv_node.outputs['UV'], tex_node.inputs['Vector'])
 
         high_obj.hide_viewport = False
         high_obj.hide_set(False)
@@ -184,14 +217,42 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Bleed past seams slightly to prevent black lines
+        bpy.context.scene.render.bake.margin = 4 # Reduce from 8 to 4 to prevent overlapping bleeds
         bpy.context.scene.render.bake.max_ray_distance = 0.05
+
+        # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
+        # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
+        # actual lighting (which is zero) and output a black/grey image.
+        bpy.context.scene.render.bake.use_pass_direct = False
+        bpy.context.scene.render.bake.use_pass_indirect = False
+        bpy.context.scene.render.bake.use_pass_color = True
 
         try:
             bpy.ops.object.bake(type='DIFFUSE', use_selected_to_active=True, pass_filter={'COLOR'})
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
+
+        # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
+        # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
+        # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
+        out_dir = os.path.dirname(os.path.abspath(args.output))
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
+        baked_image.filepath_raw = temp_img_path
+        baked_image.file_format = 'PNG'
+        baked_image.save()
+        print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
+
+        # Now re-load it from disk to ensure it behaves exactly like an external texture for glTF export
+        loaded_image = bpy.data.images.load(temp_img_path)
+
+        # Force the loaded image to be packed into the current blend file memory.
+        # This guarantees the glTF exporter embeds it, bypassing any external path resolution issues.
+        loaded_image.pack()
+        tex_node.image = loaded_image
+
+        # Link the texture AFTER baking to prevent circular dependency errors
+        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
     # 4. MATTE FINISH & ALIGNMENT
     print("🔹 Applying Matte Finish and Aligning...")
@@ -238,6 +299,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         use_selection=True
     )
     print("✅ Success!")
+
+    if temp_img_path and os.path.exists(temp_img_path):
+        try:
+            os.remove(temp_img_path)
+            print(f"🔹 Cleaned up temporary texture: {temp_img_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to remove temporary texture: {e}")
 
     bpy.ops.wm.quit_blender()
 
@@ -302,24 +370,36 @@ def process():
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     # ---------------------------------------
 
-    # --- JULES FIX 4: Disable destructive vertex cleanup entirely! ---
-    # Ensure we are in edit mode
+    # Check for non-manifold geometry and harden it with Voxel Remesh if needed
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     import bmesh
     bm = bmesh.from_edit_mesh(bpy.context.edit_object.data)
+
+    # Analyze non-manifold edges
+    non_manifold_edges = [e for e in bm.edges if not e.is_manifold]
+    has_non_manifold = len(non_manifold_edges) > 0
     verts_before = len(bm.verts)
 
-    # safe_threshold = 0.000001
-    # bpy.ops.mesh.remove_doubles(threshold=safe_threshold)
-    # bm.verts.ensure_lookup_table()
-    # verts_after = len(bm.verts)
-    # print(f"🔹 Cleanup removed {verts_before - verts_after} overlapping vertices.")
     print(f"🔹 Preserving all {verts_before} high-poly vertices for baking.")
 
-    # Apply scale before remeshing to prevent Exoside errors
     bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+
+    # Create a hardened duplicate specifically for Quad Remesher to process
+    # This prevents the original high-poly from losing UVs/Textures needed for baking
+    harden_obj = high_obj.copy()
+    harden_obj.data = high_obj.data.copy()
+    bpy.context.collection.objects.link(harden_obj)
+    harden_obj.name = "HighPoly_Hardened"
+
+    if has_non_manifold:
+        print(f"⚠️ Non-manifold geometry detected ({len(non_manifold_edges)} edges). Hardening geometry via Voxel Remesh...")
+        bpy.context.view_layer.objects.active = harden_obj
+        mod = harden_obj.modifiers.new(name="VoxelRemesh", type='REMESH')
+        mod.mode = 'VOXEL'
+        mod.voxel_size = 0.005 # Detailed enough for a 1.0 unit model
+        bpy.ops.object.modifier_apply(modifier="VoxelRemesh")
 
     # 2. THE SCULPT (Quad Remesher)
     print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
@@ -336,10 +416,16 @@ def process():
     bpy.context.scene.qremesher.target_count = args.target
     bpy.context.scene.qremesher.use_materials = False
 
-    # Ensure High Poly is active and selected
+    # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
+    if hasattr(bpy.context.scene.qremesher, 'use_normals'):
+        bpy.context.scene.qremesher.use_normals = False
+    if hasattr(bpy.context.scene.qremesher, 'use_normals_splitting'):
+        bpy.context.scene.qremesher.use_normals_splitting = False
+
+    # Ensure Hardened Object is active and selected for Quad Remesher
     bpy.ops.object.select_all(action='DESELECT')
-    high_obj.select_set(True)
-    bpy.context.view_layer.objects.active = high_obj
+    harden_obj.select_set(True)
+    bpy.context.view_layer.objects.active = harden_obj
 
     # REMOVE THIS BLOCK
     # Temporarily make the model massive for the Exoside engine
@@ -366,6 +452,10 @@ def process():
             if retopo_name in bpy.data.objects:
                 print("✅ Quad Remesher successful!")
                 low_obj = bpy.data.objects[retopo_name]
+
+                # Cleanup the hardened object since Quad Remesher is done with it
+                bpy.data.objects.remove(harden_obj, do_unlink=True)
+
                 # Ensure the new object is the active one for the export phase
                 bpy.context.view_layer.objects.active = low_obj
                 finish_export(args, high_obj, low_obj, used_decimate=False)
@@ -389,11 +479,13 @@ def process():
                 time.sleep(0.5)
             if not low_obj:
                 used_decimate = True
+                bpy.data.objects.remove(harden_obj, do_unlink=True)
             finish_export(args, high_obj, low_obj, used_decimate)
         else:
             bpy.app.timers.register(check_retopo)
 
     except RuntimeError as e:
+        bpy.data.objects.remove(harden_obj, do_unlink=True)
         if "expected class QREMESHER_OT_remesh" in str(e):
             print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
             used_decimate = True
@@ -401,6 +493,7 @@ def process():
         else:
             raise e
     except Exception as e:
+        bpy.data.objects.remove(harden_obj, do_unlink=True)
         print(f"❌ Error during remeshing: {e}")
         used_decimate = True
         finish_export(args, high_obj, low_obj=None, used_decimate=True)
