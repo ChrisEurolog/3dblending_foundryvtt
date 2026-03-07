@@ -182,6 +182,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         nodes.active = tex_node
         tex_node.select = True
 
+        # Explicitly create and link a UV Map node to guarantee glTF exporter finds the coordinates
+        uv_node = nodes.new('ShaderNodeUVMap')
+        baked_mat.node_tree.links.new(uv_node.outputs['UV'], tex_node.inputs['Vector'])
+
         high_obj.hide_viewport = False
         high_obj.hide_set(False)
 
@@ -203,11 +207,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Save the baked image to a temporary file so the glTF exporter can reliably find and embed it
-        import tempfile
-        temp_dir = tempfile.gettempdir()
-
-        temp_img_path = os.path.join(temp_dir, f"Baked_Texture_{int(time.time())}.png")
+        # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
+        # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
+        # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
+        out_dir = os.path.dirname(os.path.abspath(args.output))
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
         baked_image.file_format = 'PNG'
         baked_image.save()
@@ -215,10 +219,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # Now re-load it from disk to ensure it behaves exactly like an external texture for glTF export
         loaded_image = bpy.data.images.load(temp_img_path)
-        # Force the loaded image to be packed into the current blend file memory.
-        # This is critical for headless glTF export because without a saved .blend file,
-        # the exporter cannot resolve absolute paths in the temp directory and will fail to embed the texture.
-        loaded_image.pack()
         tex_node.image = loaded_image
 
         # Link the texture AFTER baking to prevent circular dependency errors
