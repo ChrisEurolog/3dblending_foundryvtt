@@ -385,18 +385,22 @@ def process():
     high_obj.name = "HighPoly_Master"
 
     # --- JULES: INSERT SURGICAL FIX HERE ---
-    # Center the origin and normalize to exactly 1.0 unit
-    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-    high_obj.location = (0, 0, 0)
+    if args.normalize == 1:
+        # Center the origin and normalize to exactly 1.0 unit
+        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
+        high_obj.location = (0, 0, 0)
 
-    dims = list(high_obj.dimensions) if hasattr(high_obj.dimensions, '__iter__') else []
-    if dims:
-        max_dim = max(dims)
-        if max_dim > 0:
-            scale_factor = 1.0 / max_dim
-            high_obj.scale = (scale_factor, scale_factor, scale_factor)
+        # Force a dependency graph update to ensure dimensions are accurate after the origin change
+        bpy.context.view_layer.update()
 
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        dims = list(high_obj.dimensions) if hasattr(high_obj.dimensions, '__iter__') else []
+        if dims:
+            max_dim = max(dims)
+            if max_dim > 0:
+                scale_factor = 1.0 / max_dim
+                high_obj.scale = (scale_factor, scale_factor, scale_factor)
+
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     # ---------------------------------------
 
     # Check for non-manifold geometry and harden it with Voxel Remesh if needed
@@ -410,10 +414,8 @@ def process():
     has_non_manifold = len(non_manifold_edges) > 0
     verts_before = len(bm.verts)
 
-    print(f"🔹 Preserving all {verts_before} high-poly vertices for baking.")
-
     bpy.ops.object.mode_set(mode='OBJECT')
-    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    print(f"🔹 Preserving all {verts_before} high-poly vertices for baking.")
 
     # Create a hardened duplicate specifically for Quad Remesher to process
     # This prevents the original high-poly from losing UVs/Textures needed for baking
