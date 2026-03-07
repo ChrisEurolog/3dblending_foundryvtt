@@ -255,9 +255,14 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
-        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.jpg")
         baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'PNG'
+        baked_image.file_format = 'JPEG'
+
+        # Ensure JPEG quality is set for compression
+        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
+            bpy.context.scene.render.image_settings.quality = 90
+
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
 
@@ -437,7 +442,9 @@ def process():
     bpy.ops.preferences.addon_enable(module=qr_module_name)
 
     # Configure Quad Remesher settings
-    bpy.context.scene.qremesher.target_count = args.target
+    # Since Quad Remesher interprets target as quads (2 triangles), and
+    # glTF inherently splits vertices at UV seams, we divide by 2 to prevent overshooting the target
+    bpy.context.scene.qremesher.target_count = max(args.target // 2, 100)
     bpy.context.scene.qremesher.use_materials = False
 
     # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
