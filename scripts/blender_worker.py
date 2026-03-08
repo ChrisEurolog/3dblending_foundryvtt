@@ -150,7 +150,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
@@ -161,7 +160,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        # island_margin=0.02 creates a ~20.48px gap on a 1024x1024 texture, safely containing an 8px bake margin bleed
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -188,16 +188,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
+        # Bake at double the target resolution for supersampling/anti-aliasing, then downscale.
+        # This prevents blocky/pixelated artifacts around UV seams.
         bake_res = args.maxtex * 2
         print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 16
+        bpy.context.scene.cycles.samples = 64
 
         baked_image = bpy.data.images.new("Baked_Texture", width=bake_res, height=bake_res)
         baked_mat = bpy.data.materials.new(name="Token_Material")
@@ -207,6 +204,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
+        tex_node.interpolation = 'Cubic'
         nodes.active = tex_node
         tex_node.select = True
 
@@ -225,7 +223,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        # Margin needs to be 16 at 2x resolution (2048x2048) so it downscales to an 8-pixel bleed at 1x (1024x1024),
+        # safely fitting within the 20.48 pixel gap created by island_margin=0.02.
+        bpy.context.scene.render.bake.margin = 16
 
         # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
         # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
@@ -247,7 +247,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Scale the baked image down to the target resolution for antialiasing
         print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
         baked_image.scale(args.maxtex, args.maxtex)
 
@@ -255,13 +254,16 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
-        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.jpg")
+        # Changing to PNG to ensure a completely lossless transfer to the glTF exporter,
+        # preventing JPEG artifact accumulation.
+        # The ultimate file size will be controlled later by gltfpack.
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'JPEG'
+        baked_image.file_format = 'PNG'
 
-        # Ensure JPEG quality is set for compression
-        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
-            bpy.context.scene.render.image_settings.quality = 90
+        # Set compression for intermediate PNG saving to 15 (lower means faster save time, we don't care about intermediate size)
+        if hasattr(bpy.context.scene.render.image_settings, 'compression'):
+            bpy.context.scene.render.image_settings.compression = 15
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
