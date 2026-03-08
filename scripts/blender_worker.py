@@ -162,7 +162,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (1.55 radians) to minimize UV fragmentation
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        # Increased island_margin slightly to 0.02 (2% of map size) to prevent bleed when downsampling
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -226,13 +227,16 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin for 2x downscaling
+        # Ensure healthy bleed margin for 2x downscaling (margin 16px at 2048px before downscaling to 1024px)
+        bpy.context.scene.render.bake.margin = 16
 
         # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        # Adjusted for the 1.0 unit model scale. Values too high (e.g. 0.15) will pierce thin geometry like arms/weapons, causing texture tearing.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Adjusted for the 1.0 unit model scale. Values too high (e.g. 0.05 on very thin models)
+        # will pierce thin geometry like arms/weapons, causing texture tearing or taking backface textures.
+        # Values like 0.01 / 0.02 are tighter and reduce opposing face piercing.
+        bpy.context.scene.render.bake.cage_extrusion = 0.01
+        bpy.context.scene.render.bake.max_ray_distance = 0.02
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
