@@ -250,9 +250,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
-        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.jpg")
+        # Changing to PNG to ensure a completely lossless transfer to the glTF exporter,
+        # preventing JPEG artifact accumulation.
+        # The ultimate file size will be controlled later by gltfpack.
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'JPEG'
+        baked_image.file_format = 'PNG'
 
         # Set quality for intermediate JPEG saving to 90
         if hasattr(bpy.context.scene.render.image_settings, 'quality'):
