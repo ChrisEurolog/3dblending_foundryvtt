@@ -227,11 +227,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # safely fitting within the 20.48 pixel gap created by island_margin=0.02.
         bpy.context.scene.render.bake.margin = 16
 
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
-        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
+        # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Adjusted for the 1.0 unit model scale. Values too high (e.g. 0.05 on very thin models)
+        # will pierce thin geometry like arms/weapons, causing texture tearing or taking backface textures.
+        # Values like 0.01 / 0.02 are tighter and reduce opposing face piercing.
+        bpy.context.scene.render.bake.cage_extrusion = 0.01
+        bpy.context.scene.render.bake.max_ray_distance = 0.02
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
