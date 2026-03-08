@@ -150,7 +150,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
+        # Ensure all faces point outward to prevent missing/flipped faces causing dark patches/tearing during bake
+        bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
@@ -160,8 +161,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
-        # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        # Smart project with 89 degree limit (1.55 radians) to minimize UV fragmentation
+        # Increased island_margin slightly to 0.02 (2% of map size) to prevent bleed when downsampling
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -225,13 +227,16 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        # Ensure healthy bleed margin for 2x downscaling (margin 16px at 2048px before downscaling to 1024px)
+        bpy.context.scene.render.bake.margin = 16
 
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
-        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
+        # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Adjusted for the 1.0 unit model scale. Values too high (e.g. 0.05 on very thin models)
+        # will pierce thin geometry like arms/weapons, causing texture tearing or taking backface textures.
+        # Values like 0.01 / 0.02 are tighter and reduce opposing face piercing.
+        bpy.context.scene.render.bake.cage_extrusion = 0.01
+        bpy.context.scene.render.bake.max_ray_distance = 0.02
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
@@ -258,10 +263,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.jpg")
         baked_image.filepath_raw = temp_img_path
         baked_image.file_format = 'JPEG'
-
-        # Ensure JPEG quality is set for compression
-        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
-            bpy.context.scene.render.image_settings.quality = 90
+        bpy.context.scene.render.image_settings.quality = 90
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
