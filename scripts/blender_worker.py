@@ -150,7 +150,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-        # Omitted normals_make_consistent per user override to prevent lighting shards/tears on final low-poly
+        # Ensure all faces point outward to prevent missing/flipped faces causing dark patches/tearing during bake
+        bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
@@ -229,9 +230,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        # Adjusted for the 1.0 unit model scale, increased from 0.03/0.05 to resolve minor tearing/clipping
-        bpy.context.scene.render.bake.cage_extrusion = 0.06
-        bpy.context.scene.render.bake.max_ray_distance = 0.15
+        # Adjusted for the 1.0 unit model scale. Values too high (e.g. 0.15) will pierce thin geometry like arms/weapons, causing texture tearing.
+        bpy.context.scene.render.bake.cage_extrusion = 0.03
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
