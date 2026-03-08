@@ -160,6 +160,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
+        # island_margin=0.02 creates a ~20.48px gap on a 1024x1024 texture, safely containing an 8px bake margin bleed
         bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -187,10 +188,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake directly at the target resolution, as the 2x scale/downscale pass was creating downsampling tearing
-        # when exported into gltfpack later. We rely on the Cycles 64 samples for smooth antialiasing directly.
-        bake_res = args.maxtex
-        print(f"🔹 Baking Textures natively at target ({bake_res}x{bake_res}) to avoid interpolation artifacts...")
+        # Bake at double the target resolution for supersampling/anti-aliasing, then downscale.
+        # This prevents blocky/pixelated artifacts around UV seams.
+        bake_res = args.maxtex * 2
+        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
         bpy.context.scene.cycles.samples = 64
@@ -222,8 +223,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        # Margin needs to be 16 at 2048x2048 so it downscales to an 8-pixel bleed at 1024x1024,
-        # fully covering the 10.24 pixel gap created by island_margin=0.01.
+        # Margin needs to be 16 at 2x resolution (2048x2048) so it downscales to an 8-pixel bleed at 1x (1024x1024),
+        # safely fitting within the 20.48 pixel gap created by island_margin=0.02.
         bpy.context.scene.render.bake.margin = 16
 
         # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
@@ -248,7 +249,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # No downscaling required since we baked natively at maxtex
+        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
+        baked_image.scale(args.maxtex, args.maxtex)
 
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
