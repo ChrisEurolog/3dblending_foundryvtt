@@ -223,17 +223,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        # Margin needs to be 16 at 2x resolution (2048x2048) so it downscales to an 8-pixel bleed at 1x (1024x1024),
-        # safely fitting within the 20.48 pixel gap created by island_margin=0.02.
-        bpy.context.scene.render.bake.margin = 16
+        bpy.context.scene.render.bake.margin = 8
 
-        # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
-        # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        # Adjusted for the 1.0 unit model scale. Values too high (e.g. 0.05 on very thin models)
-        # will pierce thin geometry like arms/weapons, causing texture tearing or taking backface textures.
-        # Values like 0.01 / 0.02 are tighter and reduce opposing face piercing.
-        bpy.context.scene.render.bake.cage_extrusion = 0.01
-        bpy.context.scene.render.bake.max_ray_distance = 0.02
+        # Extrude the ray-cast origin outward by a very small amount (0.5% of the 1.0 unit scale)
+        # to prevent intersecting adjacent geometry (e.g. arms baking onto weapons) while still capturing bulging geometry.
+        bpy.context.scene.render.bake.cage_extrusion = 0.005
+        bpy.context.scene.render.bake.max_ray_distance = 0.015
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
@@ -263,9 +258,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         baked_image.filepath_raw = temp_img_path
         baked_image.file_format = 'PNG'
 
-        # Set compression for intermediate PNG saving to 15 (lower means faster save time, we don't care about intermediate size)
-        if hasattr(bpy.context.scene.render.image_settings, 'compression'):
-            bpy.context.scene.render.image_settings.compression = 15
+        # Set quality for intermediate JPEG saving to 90
+        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
+            bpy.context.scene.render.image_settings.quality = 90
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
