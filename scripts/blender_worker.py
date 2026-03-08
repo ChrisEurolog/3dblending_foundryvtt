@@ -150,7 +150,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
@@ -161,7 +160,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -197,7 +196,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 16
+        bpy.context.scene.cycles.samples = 64
 
         baked_image = bpy.data.images.new("Baked_Texture", width=bake_res, height=bake_res)
         baked_mat = bpy.data.materials.new(name="Token_Material")
@@ -207,6 +206,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
+        tex_node.interpolation = 'Cubic'
         nodes.active = tex_node
         tex_node.select = True
 
@@ -225,7 +225,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        bpy.context.scene.render.bake.margin = 16 # Ensure healthy bleed margin
 
         # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
         # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
