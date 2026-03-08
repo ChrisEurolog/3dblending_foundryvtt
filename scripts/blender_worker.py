@@ -187,13 +187,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
-        bake_res = args.maxtex * 2
-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
+        # Bake directly at the target resolution, as the 2x scale/downscale pass was creating downsampling tearing
+        # when exported into gltfpack later. We rely on the Cycles 64 samples for smooth antialiasing directly.
+        bake_res = args.maxtex
+        print(f"🔹 Baking Textures natively at target ({bake_res}x{bake_res}) to avoid interpolation artifacts...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
         bpy.context.scene.cycles.samples = 64
@@ -225,7 +222,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 16 # Ensure healthy bleed margin
+        # Margin needs to be 16 at 2048x2048 so it downscales to an 8-pixel bleed at 1024x1024,
+        # fully covering the 10.24 pixel gap created by island_margin=0.01.
+        bpy.context.scene.render.bake.margin = 16
 
         # Extrude the ray-cast origin outward to ensure rays begin *outside* any high-poly bulging geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
@@ -249,18 +248,22 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Scale the baked image down to the target resolution for antialiasing
-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
-        baked_image.scale(args.maxtex, args.maxtex)
+        # No downscaling required since we baked natively at maxtex
 
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
+        # Changing to PNG to ensure a completely lossless transfer to the glTF exporter,
+        # preventing JPEG artifact accumulation.
+        # The ultimate file size will be controlled later by gltfpack.
         temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'JPEG'
-        bpy.context.scene.render.image_settings.quality = 90
+        baked_image.file_format = 'PNG'
+
+        # Set compression for intermediate PNG saving to 15 (lower means faster save time, we don't care about intermediate size)
+        if hasattr(bpy.context.scene.render.image_settings, 'compression'):
+            bpy.context.scene.render.image_settings.compression = 15
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
