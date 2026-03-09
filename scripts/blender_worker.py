@@ -161,8 +161,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        # island_margin to 0.01 to prevent 'patchwork' texture bleed overlapping
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        # island_margin increased to 0.05 to prevent 'patchwork' texture bleed overlapping
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.05)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -227,12 +227,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.margin = 8
 
         # Extrude the ray-cast origin outward to capture surface bulging geometry.
-        # Set extrusion and ray distance to 3% and 5% respectively for a 1.0 unit normalized model
+        # Increase extrusion to 0.1 and max ray distance to 0.15 for a 1.0 unit normalized model
         # to prevent holes/tearing/jagged breakups where the low poly significantly clips inside the high poly
-        # (especially on complex overlapping features like drooping belts, hanging pouches, and fingers)
-        # while using a UV island_margin (0.01) to maximize space.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # (especially on complex overlapping features like drooping belts, hanging pouches, and fingers).
+        bpy.context.scene.render.bake.cage_extrusion = 0.1
+        bpy.context.scene.render.bake.max_ray_distance = 0.15
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
