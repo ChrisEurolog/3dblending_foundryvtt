@@ -224,10 +224,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 8
 
-        # Extrude the ray-cast origin outward by a small amount (3% of the 1.0 unit scale)
-        # to prevent intersecting adjacent geometry (e.g. arms baking onto weapons) while still capturing bulging geometry.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Extrude the ray-cast origin outward by a tiny amount (0.2% of the 1.0 unit scale)
+        # to capture very minor surface bulging geometry while strictly avoiding intersecting adjacent geometry
+        # (e.g., arms bleeding onto torsos, which causes texture tearing/artifacts).
+        bpy.context.scene.render.bake.cage_extrusion = 0.002
+        bpy.context.scene.render.bake.max_ray_distance = 0.005
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
