@@ -150,6 +150,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
+        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
@@ -223,14 +224,15 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 4
+        bpy.context.scene.render.bake.margin = 8
 
         # Extrude the ray-cast origin outward to capture surface bulging geometry.
-        # Increased extrusion and ray distance (to 1% and 2% respectively for a 1.0 unit normalized model)
+        # Set extrusion and ray distance (to 3% and 5% respectively for a 1.0 unit normalized model)
         # to prevent holes/tearing where the low poly significantly clips inside the high poly
+        # (especially on features like beards, arms, axes)
         # relying on the increased UV island_margin (0.02) to handle spatial separation.
-        bpy.context.scene.render.bake.cage_extrusion = 0.01
-        bpy.context.scene.render.bake.max_ray_distance = 0.02
+        bpy.context.scene.render.bake.cage_extrusion = 0.03
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
@@ -253,13 +255,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
-        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.jpg")
         baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'PNG'
+        baked_image.file_format = 'JPEG'
 
-        # Set color depth for intermediate PNG saving to 8-bit to save memory before glTF packing
-        if hasattr(bpy.context.scene.render.image_settings, 'color_depth'):
-            bpy.context.scene.render.image_settings.color_depth = '8'
+        # Save as 90% quality JPEG to ensure VTT tokens are small while avoiding artifacts
+        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
+            bpy.context.scene.render.image_settings.quality = 90
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
