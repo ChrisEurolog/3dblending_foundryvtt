@@ -227,12 +227,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.margin = 16
 
         # Extrude the ray-cast origin outward to capture surface bulging geometry.
-        # Set extrusion and ray distance (to 5% and 10% respectively for a 1.0 unit normalized model)
+        # Set extrusion and ray distance higher (15% and 30% respectively for a 1.0 unit normalized model)
         # to prevent holes/tearing/jagged breakups where the low poly significantly clips inside the high poly
-        # (especially on features like beards, arms, axes)
+        # (especially on complex overlapping features like drooping belts, hanging pouches, and fingers)
         # while using a UV island_margin (0.01) to maximize space.
-        bpy.context.scene.render.bake.cage_extrusion = 0.05
-        bpy.context.scene.render.bake.max_ray_distance = 0.1
+        bpy.context.scene.render.bake.cage_extrusion = 0.15
+        bpy.context.scene.render.bake.max_ray_distance = 0.3
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
