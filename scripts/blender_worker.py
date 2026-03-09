@@ -160,6 +160,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
+        # island_margin increased to 0.02 to prevent UV bleeding on tight models
         bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -222,13 +223,14 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8
+        bpy.context.scene.render.bake.margin = 4
 
-        # Extrude the ray-cast origin outward by a tiny amount (0.2% of the 1.0 unit scale)
-        # to capture very minor surface bulging geometry while strictly avoiding intersecting adjacent geometry
-        # (e.g., arms bleeding onto torsos, which causes texture tearing/artifacts).
-        bpy.context.scene.render.bake.cage_extrusion = 0.002
-        bpy.context.scene.render.bake.max_ray_distance = 0.005
+        # Extrude the ray-cast origin outward to capture surface bulging geometry.
+        # Increased extrusion and ray distance (to 1% and 2% respectively for a 1.0 unit normalized model)
+        # to prevent holes/tearing where the low poly significantly clips inside the high poly
+        # relying on the increased UV island_margin (0.02) to handle spatial separation.
+        bpy.context.scene.render.bake.cage_extrusion = 0.01
+        bpy.context.scene.render.bake.max_ray_distance = 0.02
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
