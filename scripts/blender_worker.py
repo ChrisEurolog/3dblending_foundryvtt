@@ -150,7 +150,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
