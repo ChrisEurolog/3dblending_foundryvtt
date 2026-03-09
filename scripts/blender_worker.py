@@ -224,10 +224,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 8
 
-        # Extrude the ray-cast origin outward by a very small amount (0.5% of the 1.0 unit scale)
+        # Extrude the ray-cast origin outward by a small amount (3% of the 1.0 unit scale)
         # to prevent intersecting adjacent geometry (e.g. arms baking onto weapons) while still capturing bulging geometry.
-        bpy.context.scene.render.bake.cage_extrusion = 0.005
-        bpy.context.scene.render.bake.max_ray_distance = 0.01
+        bpy.context.scene.render.bake.cage_extrusion = 0.03
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
@@ -250,16 +250,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
-        # Changing to PNG to ensure a completely lossless transfer to the glTF exporter,
-        # preventing JPEG artifact accumulation.
-        # The ultimate file size will be controlled later by gltfpack.
         temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
         baked_image.file_format = 'PNG'
 
-        # Set quality for intermediate JPEG saving to 90
-        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
-            bpy.context.scene.render.image_settings.quality = 90
+        # Set color depth for intermediate PNG saving to 8-bit to save memory before glTF packing
+        if hasattr(bpy.context.scene.render.image_settings, 'color_depth'):
+            bpy.context.scene.render.image_settings.color_depth = '8'
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
