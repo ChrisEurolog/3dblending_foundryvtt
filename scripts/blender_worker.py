@@ -224,13 +224,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 32
+        bpy.context.scene.render.bake.margin = 8
 
         # Extrude the ray-cast origin outward to capture surface bulging geometry.
         # Decrease extrusion to 1% and max ray distance to 2% respectively for a 1.0 unit normalized model.
         # This prevents "cross-baking" or dark tearing where rays overshoot thin geometry
         # (like fingers, drooping belts, or tight armpits) and hit adjacent surfaces.
-        # Combined with a higher bake margin (32px), this fills seams while avoiding bad geometric raycast hits.
+        # Combined with a moderate bake margin (8px), this fills seams while avoiding bad geometric raycast hits.
         bpy.context.scene.render.bake.cage_extrusion = 0.01
         bpy.context.scene.render.bake.max_ray_distance = 0.02
 
