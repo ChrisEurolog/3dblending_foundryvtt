@@ -205,6 +205,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
+        tex_node.interpolation = 'Cubic'
         nodes.active = tex_node
         tex_node.select = True
 
@@ -225,11 +226,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 32 # Ensure healthy bleed margin
 
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
-        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
-        # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Extrude the ray-cast origin outward to capture surface bulging geometry.
+        # Decrease extrusion to 1% and max ray distance to 2% respectively for a 1.0 unit normalized model.
+        # This prevents "cross-baking" or dark tearing where rays overshoot thin geometry
+        # (like fingers, drooping belts, or tight armpits) and hit adjacent surfaces.
+        # Combined with a moderate bake margin (8px), this fills seams while avoiding bad geometric raycast hits.
+        bpy.context.scene.render.bake.cage_extrusion = 0.01
+        bpy.context.scene.render.bake.max_ray_distance = 0.02
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
