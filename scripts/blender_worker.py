@@ -227,11 +227,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.margin = 8
 
         # Extrude the ray-cast origin outward to capture surface bulging geometry.
-        # Set extrusion to 3% and max ray distance to 5% respectively for a 1.0 unit normalized model.
-        # This provides enough raycast distance to capture geometry like beards/arms
-        # while preventing cross-baking on thin geometry.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Decrease extrusion to 1% and max ray distance to 2% respectively for a 1.0 unit normalized model.
+        # This prevents "cross-baking" or dark tearing where rays overshoot thin geometry
+        # (like fingers, drooping belts, or tight armpits) and hit adjacent surfaces.
+        # Combined with a moderate bake margin (8px), this fills seams while avoiding bad geometric raycast hits.
+        bpy.context.scene.render.bake.cage_extrusion = 0.01
+        bpy.context.scene.render.bake.max_ray_distance = 0.02
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
