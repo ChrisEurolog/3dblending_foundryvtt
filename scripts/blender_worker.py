@@ -161,6 +161,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
+        # Set island_margin to 0.01 to prevent 'patchwork' texture bleed overlapping between UV islands
         bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -188,11 +189,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
+        # Bake at double the target resolution for supersampling/anti-aliasing, then downscale.
+        # This prevents blocky/pixelated artifacts around UV seams.
         bake_res = args.maxtex * 2
         print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
         bpy.context.scene.render.engine = 'CYCLES'
@@ -247,7 +245,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Scale the baked image down to the target resolution for antialiasing
         print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
         baked_image.scale(args.maxtex, args.maxtex)
 
@@ -259,7 +256,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         baked_image.filepath_raw = temp_img_path
         baked_image.file_format = 'JPEG'
 
-        # Ensure JPEG quality is set for compression
+        # Save as 90% quality JPEG to ensure VTT tokens are small while avoiding artifacts
         if hasattr(bpy.context.scene.render.image_settings, 'quality'):
             bpy.context.scene.render.image_settings.quality = 90
 
