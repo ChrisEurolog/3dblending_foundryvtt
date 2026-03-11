@@ -161,7 +161,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.0)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -204,6 +204,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
         tex_node = nodes.new('ShaderNodeTexImage')
         tex_node.image = baked_image
+        tex_node.interpolation = 'Cubic'
         nodes.active = tex_node
         tex_node.select = True
 
@@ -224,11 +225,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 2 # Prevent healthy bleed margin from overlapping small UV islands
 
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
+        # Extrude the ray-cast origin outward by 5% of the 1.0 unit model scale
         # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        bpy.context.scene.render.bake.cage_extrusion = 0.05
+        bpy.context.scene.render.bake.max_ray_distance = 0.08
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
