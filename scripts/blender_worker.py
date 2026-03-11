@@ -188,16 +188,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
-        bake_res = args.maxtex * 2
-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
+        # Bake natively at target resolution with higher samples to prevent seam tearing
+        # from margin destruction during downscaling.
+        bake_res = args.maxtex
+        print(f"🔹 Baking High-Def Textures natively at {args.maxtex}x{args.maxtex} (64 samples for crispness)...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 16
+        bpy.context.scene.cycles.samples = 64
 
         baked_image = bpy.data.images.new("Baked_Texture", width=bake_res, height=bake_res)
         baked_mat = bpy.data.materials.new(name="Token_Material")
@@ -225,13 +222,14 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        bpy.context.scene.render.bake.margin = 8 # Prevent healthy bleed margin from overlapping small UV islands
 
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
-        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
-        # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        # Extrude the ray-cast origin outward by 1.5% of the 1.0 unit model scale
+        # to ensure rays begin *outside* any high-poly geometry but avoid overlapping
+        # rays on tight extremities (like thumbs/fingers).
+        # Set max_ray_distance to cast deep enough inward without hitting adjacent mesh parts.
+        bpy.context.scene.render.bake.cage_extrusion = 0.015
+        bpy.context.scene.render.bake.max_ray_distance = 0.025
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
@@ -247,10 +245,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Scale the baked image down to the target resolution for antialiasing
-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
-        baked_image.scale(args.maxtex, args.maxtex)
-
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
@@ -259,7 +253,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         baked_image.filepath_raw = temp_img_path
         baked_image.file_format = 'JPEG'
 
-        # Ensure JPEG quality is set for compression
+        # Save as 90% quality JPEG to ensure VTT tokens are small while avoiding artifacts
         if hasattr(bpy.context.scene.render.image_settings, 'quality'):
             bpy.context.scene.render.image_settings.quality = 90
 
