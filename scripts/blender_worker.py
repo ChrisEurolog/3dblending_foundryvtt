@@ -225,11 +225,11 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.scene.render.bake.use_selected_to_active = True
         bpy.context.scene.render.bake.margin = 16 # Ensure healthy bleed margin
 
-        # Extrude the ray-cast origin outward by 1% of the 1.0 unit model scale
+        # Extrude the ray-cast origin outward by 5% of the 1.0 unit model scale
         # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.01
-        bpy.context.scene.render.bake.max_ray_distance = 0.02
+        bpy.context.scene.render.bake.cage_extrusion = 0.05
+        bpy.context.scene.render.bake.max_ray_distance = 0.08
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
