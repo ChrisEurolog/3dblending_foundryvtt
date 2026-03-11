@@ -188,10 +188,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at double the target resolution for supersampling/anti-aliasing, then downscale.
-        # This prevents blocky/pixelated artifacts around UV seams.
-        bake_res = args.maxtex * 2
-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
+        # Bake natively at target resolution with higher samples to prevent seam tearing
+        # from margin destruction during downscaling.
+        bake_res = args.maxtex
+        print(f"🔹 Baking High-Def Textures natively at {args.maxtex}x{args.maxtex} (64 samples for crispness)...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
         bpy.context.scene.cycles.samples = 64
@@ -244,9 +244,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
-
-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
-        baked_image.scale(args.maxtex, args.maxtex)
 
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
