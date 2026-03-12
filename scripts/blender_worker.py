@@ -227,8 +227,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
         # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.05
-        bpy.context.scene.render.bake.max_ray_distance = 0.1
+        bpy.context.scene.render.bake.cage_extrusion = 0.03
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
