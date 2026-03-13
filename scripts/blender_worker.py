@@ -161,6 +161,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
+        # island_margin 0.01 provides significant padding on a 1024 map to prevent texture bleed margin from overlapping adjacent UV islands, fixing tearing artifacts
         bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
         bpy.ops.object.mode_set(mode='OBJECT')
 
@@ -188,16 +189,12 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                     mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
 
         # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
-        bake_res = args.maxtex * 2
-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
+        # Bake at the requested base resolution to avoid anti-aliasing blurring and artifacting on the final model.
+        bake_res = args.maxtex
+        print(f"🔹 Baking Textures at base resolution: {bake_res}x{bake_res}...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 16
+        bpy.context.scene.cycles.samples = 64
 
         baked_image = bpy.data.images.new("Baked_Texture", width=bake_res, height=bake_res)
         baked_mat = bpy.data.materials.new(name="Token_Material")
@@ -225,13 +222,14 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        bpy.context.scene.render.bake.margin = 8 # Ensure bleed margin without over-spilling into widened UV gaps
 
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
-        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
+        # Extrude the ray-cast origin outward slightly (4% of the 1.0 unit model scale)
+        # to ensure rays begin *outside* high-poly bulging geometry (belts, beards),
+        # but not so far that narrow elements (fingers/arms) intersect and capture adjacent geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
+        bpy.context.scene.render.bake.cage_extrusion = 0.05
+        bpy.context.scene.render.bake.max_ray_distance = 0.1
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
         # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
@@ -246,10 +244,6 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
-
-        # Scale the baked image down to the target resolution for antialiasing
-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
-        baked_image.scale(args.maxtex, args.maxtex)
 
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
