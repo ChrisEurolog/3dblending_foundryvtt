@@ -222,7 +222,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        bpy.context.scene.render.bake.margin = 16 # Ensure healthy bleed margin
 
         # Extrude the ray-cast origin outward slightly (4% of the 1.0 unit model scale)
         # to ensure rays begin *outside* high-poly bulging geometry (belts, beards),
