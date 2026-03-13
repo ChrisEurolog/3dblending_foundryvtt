@@ -161,8 +161,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        # island_margin 0.01 provides adequate padding on a 1024 map to prevent texture bleed margin from overlapping adjacent UV islands
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        # island_margin 0.02 provides significant padding on a 1024 map to prevent texture bleed margin from overlapping adjacent UV islands, fixing tearing artifacts
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.02)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -222,13 +222,13 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 8 # Ensure healthy bleed margin
+        bpy.context.scene.render.bake.margin = 8 # Ensure bleed margin without over-spilling into widened UV gaps
 
         # Extrude the ray-cast origin outward slightly (4% of the 1.0 unit model scale)
         # to ensure rays begin *outside* high-poly bulging geometry (belts, beards),
         # but not so far that narrow elements (fingers/arms) intersect and capture adjacent geometry.
         # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.06
+        bpy.context.scene.render.bake.cage_extrusion = 0.05
         bpy.context.scene.render.bake.max_ray_distance = 0.1
 
         # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
