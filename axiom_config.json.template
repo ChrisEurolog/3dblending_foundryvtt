@@ -3,7 +3,7 @@
   "paths": {
     "blender_exe": "C:\\Program Files\\Blender Foundation\\Blender 5.0\\blender.exe",
     "instant_meshes_exe": "./tools/InstantMeshes.exe",
-    "xnormal_exe": "C:\\Program Files\\xNormal\\3.19.3.39669\\x64\\xNormal.exe",
+    "xnormal_exe": "C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe",
     "gltfpack_exe": "./tools/gltfpack.exe",
     "source_dir": "./assets/source/exports",
     "output_dir": "./assets/builds",

@@ -11,21 +11,34 @@ def extract_glb(input_glb, output_obj):
     # Check if there's any geometry
     if not scene.geometry:
         print("❌ Error: No geometry found in the GLB file.")
-        return False
+        return False, None
 
-    # Export high-poly geometry and its MTL/Textures
-    # By saving to OBJ with Trimesh, it automatically dumps the .mtl and any associated texture files
-    # into the same directory as output_obj. This correctly preserves multi-material setups
-    # and allows xNormal to read the materials directly via the .obj file.
-    print("🔹 Exporting high-poly geometry and materials to OBJ...")
+    # We need to manually extract the texture image to pass directly to xNormal
+    # because xNormal batch mode does not reliably parse .mtl files for diffuse baking.
+    tex_path = None
+    for name, geom in scene.geometry.items():
+        if hasattr(geom.visual, 'material'):
+            mat = geom.visual.material
+            # Depending on Trimesh version and material type (PBRMaterial vs SimpleMaterial)
+            image = None
+            if hasattr(mat, 'baseColorTexture') and mat.baseColorTexture is not None:
+                image = mat.baseColorTexture
+            elif hasattr(mat, 'image') and mat.image is not None:
+                image = mat.image
+
+            if image:
+                tex_path = output_obj.replace('.obj', '_diffuse.png')
+                image.save(tex_path)
+                print(f"✅ Extracted diffuse texture to {tex_path}")
+                break # Just take the first valid texture found for now
+
+    print("🔹 Exporting high-poly geometry to OBJ...")
     mesh = scene.dump(concatenate=True)
 
-    # Ensure export includes materials
-    # We pass include_normals=True and include_texture=True to ensure xNormal gets all data
-    # We don't manually extract a single texture anymore, xNormal will read the MTL
+    # We still export the obj, but we will explicitly pass tex_path to xNormal later
     mesh.export(output_obj, include_texture=True)
 
-    return True
+    return True, tex_path
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract OBJ and materials from GLB")

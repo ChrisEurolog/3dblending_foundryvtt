@@ -4,7 +4,7 @@ import subprocess
 import os
 import xml.etree.ElementTree as ET
 
-def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, output_glb, max_res, xnormal_exe):
+def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, max_res, xnormal_exe):
     print(f"🔹 Unwrapping and Baking textures...")
 
     # 1. UV Unwrapping with xatlas
@@ -48,23 +48,28 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, output_glb, max_res, xnorma
         high_mesh.set("file", os.path.abspath(high_poly_obj))
         high_mesh.set("scale", "1.0")
         high_mesh.set("ignorePerVertexColor", "true") # Force texture usage over vertex colors
-        # We don't specify baseColorTex explicitly here anymore.
-        # By not passing it, we force xNormal to read the .mtl file that Trimesh exported alongside the OBJ.
-        # This allows multi-material meshes to bake correctly instead of overriding everything with one texture.
+
+        if high_poly_tex and os.path.exists(high_poly_tex):
+            # Batch mode requires explicit base texture element instead of inferring from .mtl
+            base_tex = ET.SubElement(high_mesh, "BaseTexture")
+            base_tex.set("file", os.path.abspath(high_poly_tex))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
         low_mesh.set("file", os.path.abspath(temp_unwrapped_obj))
         low_mesh.set("scale", "1.0")
+        # Ensure Ray distance captures geometry just below or outside the surface
+        low_mesh.set("maximumRayDistanceFront", "0.05")
+        low_mesh.set("maximumRayDistanceBack", "0.05")
 
-        generation = ET.SubElement(root, "Generation")
-        generation.set("bBakeBaseColor", "true") # Bake Albedo/Diffuse
-        generation.set("bBakeNormals", "false")
-        generation.set("bBakeAO", "false")
+        generation = ET.SubElement(root, "Generate")
+        generation.set("bGenBaseTexture", "true") # Bake Albedo/Diffuse
+        generation.set("bGenNormals", "false")
+        generation.set("bGenAO", "false")
         generation.set("width", str(max_res))
         generation.set("height", str(max_res))
-        generation.set("edgePadding", "8") # Prevent bleeding/tearing
-        generation.set("output", os.path.abspath(baked_tex_png))
+        generation.set("edgePadding", "16") # Increased to 16 to prevent bleeding/tearing around UV seams
+        generation.set("file", os.path.abspath(baked_tex_png))
         # Ensure antialiasing is turned on for high quality
         generation.set("aa", "4")
 
@@ -146,9 +151,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="UV Unwrap and Bake Textures (xNormal)")
     parser.add_argument("--high_obj", required=True, help="High poly OBJ file")
     parser.add_argument("--low_raw", required=True, help="Low poly raw OBJ file from Instant Meshes")
+    parser.add_argument("--high_tex", required=False, help="High poly diffuse texture file", default=None)
     parser.add_argument("--output_glb", required=True, help="Output GLB file")
     parser.add_argument("--max_res", type=int, default=1024, help="Max texture resolution")
     parser.add_argument("--xnormal_exe", required=True, help="Path to xNormal executable")
 
     args = parser.parse_args()
-    unwrap_and_bake(args.high_obj, args.low_raw, args.output_glb, args.max_res, args.xnormal_exe)
+    unwrap_and_bake(args.high_obj, args.low_raw, args.high_tex, args.output_glb, args.max_res, args.xnormal_exe)

@@ -135,7 +135,7 @@ class TestMainPipeline(unittest.TestCase):
         """Test process_file calls shutil.move on success."""
         # mock_exists defaults to True
         mock_exists.return_value = True
-        mock_extract.return_value = True
+        mock_extract.return_value = (True, "mock_tex.png")
         mock_unwrap.return_value = True
 
         app_paths = MagicMock()

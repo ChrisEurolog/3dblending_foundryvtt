@@ -160,7 +160,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
 
     try:
-        success = extract_glb(input_path, high_poly_obj)
+        success, high_poly_tex = extract_glb(input_path, high_poly_obj)
         if not success:
             print(f"❌ Extraction failed for {f}")
             return
@@ -192,7 +192,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     # 3. Python UV Unwrap and Bake Pass
     print("  Running UV Unwrap and Bake pass...")
     try:
-        success = unwrap_and_bake(high_poly_obj, low_poly_raw_obj, temp_out, max_res, xnormal_exe)
+        success = unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, xnormal_exe)
         if not success:
             print(f"❌ UV/Bake failed for {f}")
             return
@@ -247,7 +247,7 @@ def run_pipeline():
     # Blender EXE might be system path or absolute.
     blender_exe = paths['blender_exe']
     instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
-    xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3.39669\\x64\\xNormal.exe'), root_dir)
+    xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe'), root_dir)
     gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
     source_dir = resolve_path(paths['source_dir'], root_dir)
     output_dir = resolve_path(paths['output_dir'], root_dir)

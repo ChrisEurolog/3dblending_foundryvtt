@@ -39,7 +39,7 @@ class TestBake(unittest.TestCase):
         # Mock xnormal exe path to pass exists check
         import tempfile
         with tempfile.NamedTemporaryFile() as fake_exe:
-            res = unwrap_and_bake(high_obj, low_raw, output_glb, 1024, fake_exe.name)
+            res = unwrap_and_bake(high_obj, low_raw, high_tex, output_glb, 1024, fake_exe.name)
 
         self.assertTrue(res)
         self.assertTrue(os.path.exists(output_glb))
