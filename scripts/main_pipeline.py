@@ -6,6 +6,10 @@ import argparse
 import sys
 from collections import namedtuple
 
+# Import pipeline steps directly instead of subprocesses for PyInstaller compatibility
+from scripts.extract_glb import extract_glb
+from scripts.bake_textures import unwrap_and_bake
+
 AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
 
 def get_app_paths():
@@ -138,7 +142,7 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
-def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
+def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
     input_path = os.path.join(source_dir, f)
     if not os.path.exists(input_path):
             print(f"⚠️ Warning: File not found: {input_path}")
@@ -149,34 +153,52 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe,
 
     print(f"🔹 Processing: {f}")
 
-    # Blender Pass
-    # Locate the bundled or relative blender_worker.py
     script_dir = app_paths.scripts
-    blender_worker = os.path.join(script_dir, "blender_worker.py")
 
-    if not os.path.exists(blender_worker):
-            print(f"❌ Error: blender_worker.py not found at {blender_worker}")
-            raise FileNotFoundError(f"blender_worker.py not found at {blender_worker}")
+    # 1. Python Extraction Pass
+    print("  Running Extraction pass...")
+    high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
 
-    blender_cmd = [
-        blender_exe, "--python", blender_worker, "--",
-        "--input", input_path,
-        "--output", temp_out,
-        "--target", str(target_v),
-        "--maxtex", str(max_res),
-        "--normalize", str(profile_data['norm']),
-        "--matte", str(profile_data['matte'])
+    try:
+        success = extract_glb(input_path, high_poly_obj)
+        if not success:
+            print(f"❌ Extraction failed for {f}")
+            return
+    except Exception as e:
+        print(f"❌ Extraction Error on {f}: {e}")
+        return
+
+    # 2. Instant Meshes Pass
+    print("  Running Instant Meshes pass...")
+    low_poly_raw_obj = os.path.join(temp_dir, f.replace(".glb", "_low_raw.obj"))
+    if not os.path.exists(instant_meshes_exe):
+        print(f"❌ Error: Instant Meshes executable not found at {instant_meshes_exe}")
+        raise FileNotFoundError(f"Instant Meshes executable not found at {instant_meshes_exe}")
+
+    im_cmd = [
+        instant_meshes_exe,
+        "-o", low_poly_raw_obj,
+        "-v", str(target_v),
+        high_poly_obj
     ]
 
-    print("  Running Blender pass...")
     try:
-        subprocess.run(blender_cmd, check=True)
+        # Some versions of instant meshes output to stdout/stderr, so we capture or let it flow
+        subprocess.run(im_cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Blender Error on {f}: {e}")
+        print(f"❌ Instant Meshes Error on {f}: {e}")
         return
-    except FileNotFoundError:
-        print(f"❌ Error: Blender executable not found at {blender_exe}")
-        raise FileNotFoundError(f"Blender executable not found at {blender_exe}")
+
+    # 3. Python UV Unwrap and Bake Pass
+    print("  Running UV Unwrap and Bake pass...")
+    try:
+        success = unwrap_and_bake(high_poly_obj, low_poly_raw_obj, temp_out, max_res, xnormal_exe)
+        if not success:
+            print(f"❌ UV/Bake failed for {f}")
+            return
+    except Exception as e:
+        print(f"❌ UV/Bake Error on {f}: {e}")
+        return
 
     # Meshopt Pass
     if profile_key != "archive":
@@ -224,6 +246,8 @@ def run_pipeline():
     # Resolve paths
     # Blender EXE might be system path or absolute.
     blender_exe = paths['blender_exe']
+    instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
+    xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3.39669\\x64\\xNormal.exe'), root_dir)
     gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
     source_dir = resolve_path(paths['source_dir'], root_dir)
     output_dir = resolve_path(paths['output_dir'], root_dir)
@@ -283,7 +307,7 @@ def run_pipeline():
 
     for f in files:
         try:
-            process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key, archive_dir)
+            process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key, archive_dir)
         except FileNotFoundError as e:
              # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")
