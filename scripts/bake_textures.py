@@ -85,8 +85,20 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, output_glb, max_res, xnorma
             print(result.stdout)
         except subprocess.CalledProcessError as e:
             print("❌ xNormal execution failed!")
-            print(f"--- xNormal stdout ---\n{e.stdout}")
-            print(f"--- xNormal stderr ---\n{e.stderr}")
+
+            # xNormal is a GUI app and often logs errors to a specific debug file rather than stderr
+            debug_log = os.path.expanduser(r'~\Documents\xNormal\xNormal_debugLog.txt')
+            if os.path.exists(debug_log):
+                print("--- xNormal Debug Log ---")
+                try:
+                    with open(debug_log, 'r', encoding='utf-8', errors='ignore') as f:
+                        print(f.read())
+                except Exception as log_e:
+                    print(f"Could not read debug log: {log_e}")
+                print("-------------------------")
+            else:
+                print(f"--- xNormal stdout ---\n{e.stdout}")
+                print(f"--- xNormal stderr ---\n{e.stderr}")
             return False
 
         if not os.path.exists(baked_tex_png):
