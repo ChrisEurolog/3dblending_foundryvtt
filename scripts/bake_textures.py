@@ -75,16 +75,28 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, output_glb, max_res, xnorma
         # Execute xNormal
         # Note: xNormal CLI usually returns immediately while rendering in a background process,
         # but in batch mode it can be blocking depending on flags.
-        subprocess.run([xnormal_exe, xnormal_xml_path], check=True)
+        try:
+            result = subprocess.run(
+                [xnormal_exe, xnormal_xml_path],
+                check=True,
+                capture_output=True,
+                text=True
+            )
+            print(result.stdout)
+        except subprocess.CalledProcessError as e:
+            print("❌ xNormal execution failed!")
+            print(f"--- xNormal stdout ---\n{e.stdout}")
+            print(f"--- xNormal stderr ---\n{e.stderr}")
+            return False
 
         if not os.path.exists(baked_tex_png):
-            print("❌ xNormal failed to generate the baked texture.")
+            print("❌ xNormal failed to generate the baked texture. No output file found.")
             return False
 
         print(f"✅ xNormal bake complete: {baked_tex_png}")
 
     except Exception as e:
-        print(f"❌ Error during xNormal baking: {e}")
+        print(f"❌ Error during xNormal setup/baking: {e}")
         return False
 
     # 3. Assemble final GLB

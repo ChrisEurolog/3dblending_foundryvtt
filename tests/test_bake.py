@@ -8,7 +8,7 @@ class TestBake(unittest.TestCase):
     @patch('scripts.bake_textures.subprocess.run')
     def test_unwrap_and_bake(self, mock_run):
         # Mock xNormal subprocess
-        mock_run.return_value = MagicMock(returncode=0)
+        mock_run.return_value = MagicMock(returncode=0, stdout="Mock xNormal success", stderr="")
 
         # Create mock inputs
         high_obj = "mock_high.obj"
@@ -31,6 +31,7 @@ class TestBake(unittest.TestCase):
             xml_path = args[0][1]
             baked_png = xml_path.replace("_xnormal.xml", "_baked.png")
             im.save(baked_png)
+            return MagicMock(returncode=0, stdout="Mock xNormal success", stderr="")
         mock_run.side_effect = side_effect
 
         # Test script execution via imported function
