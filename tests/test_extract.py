@@ -32,3 +32,5 @@ class TestExtract(unittest.TestCase):
             os.remove("material.mtl")
         if os.path.exists("material_0.png"):
             os.remove("material_0.png")
+        if os.path.exists("out_box_diffuse.png"):
+            os.remove("out_box_diffuse.png")

@@ -153,8 +153,6 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     print(f"🔹 Processing: {f}")
 
-    script_dir = app_paths.scripts
-
     # 1. Python Extraction Pass
     print("  Running Extraction pass...")
     high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
