@@ -126,13 +126,17 @@ class TestMainPipeline(unittest.TestCase):
 
     @patch('scripts.main_pipeline.os.path.exists')
     @patch('scripts.main_pipeline.os.remove')
+    @patch('scripts.main_pipeline.extract_glb')
+    @patch('scripts.main_pipeline.unwrap_and_bake')
     @patch('scripts.main_pipeline.subprocess.run')
     @patch('scripts.main_pipeline.shutil.copy')
     @patch('scripts.main_pipeline.shutil.move')
-    def test_process_file_success_moves_file(self, mock_move, mock_copy, mock_run, mock_remove, mock_exists):
+    def test_process_file_success_moves_file(self, mock_move, mock_copy, mock_run, mock_unwrap, mock_extract, mock_remove, mock_exists):
         """Test process_file calls shutil.move on success."""
         # mock_exists defaults to True
         mock_exists.return_value = True
+        mock_extract.return_value = (True, "mock_tex.png")
+        mock_unwrap.return_value = True
 
         app_paths = MagicMock()
         app_paths.scripts = '/scripts'
@@ -145,6 +149,8 @@ class TestMainPipeline(unittest.TestCase):
             temp_dir="/temp",
             output_dir="/output",
             blender_exe="blender",
+            instant_meshes_exe="instantmeshes",
+            xnormal_exe="xnormal",
             gltfpack_exe="gltfpack",
             profile_data=profile_data,
             target_v=1000,
