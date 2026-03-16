@@ -23,6 +23,11 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
 
         temp_unwrapped_obj = low_poly_raw_obj.replace(".obj", "_uv.obj")
         unwrapped_mesh.export(temp_unwrapped_obj)
+        # Ensure no invalid .mtl file is passed to xNormal, which causes "can't find a plugin for" errors
+        mtl_file = temp_unwrapped_obj.replace('.obj', '.mtl')
+        if os.path.exists(mtl_file):
+            os.remove(mtl_file)
+
         print(f"✅ Unwrapped mesh saved to {temp_unwrapped_obj}")
 
     except Exception as e:
@@ -69,7 +74,7 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         generation.set("width", str(max_res))
         generation.set("height", str(max_res))
         generation.set("edgePadding", "16") # Increased to 16 to prevent bleeding/tearing around UV seams
-        generation.set("file", os.path.abspath(baked_tex_png))
+        generation.set("baseTextureFile", os.path.abspath(baked_tex_png))
         # Ensure antialiasing is turned on for high quality
         generation.set("aa", "4")
 

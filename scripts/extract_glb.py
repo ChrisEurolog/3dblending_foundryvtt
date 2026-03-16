@@ -36,7 +36,12 @@ def extract_glb(input_glb, output_obj):
     mesh = scene.dump(concatenate=True)
 
     # We still export the obj, but we will explicitly pass tex_path to xNormal later
-    mesh.export(output_obj, include_texture=True)
+    mesh.export(output_obj, include_texture=False)
+
+    # Ensure no empty/invalid .mtl file is passed to xNormal, which can cause "can't find a plugin for" errors
+    mtl_file = output_obj.replace('.obj', '.mtl')
+    if os.path.exists(mtl_file):
+        os.remove(mtl_file)
 
     return True, tex_path
 
