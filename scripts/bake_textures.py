@@ -44,39 +44,45 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
     xnormal_xml_path = temp_unwrapped_obj.replace(".obj", "_xnormal.xml")
 
     try:
-        # Construct xNormal batch XML according to the official xNormal schema
-        # xNormal uses an XML file passed via CLI for batch processing: xNormal.exe path_to_xml.xml
-        root = ET.Element("xNormal")
+        # Construct xNormal batch XML matching the schema provided by the user (v3.19.3)
+        root = ET.Element("Settings")
+        root.set("Version", "3.19.3")
 
         high_poly_model = ET.SubElement(root, "HighPolyModel")
         high_mesh = ET.SubElement(high_poly_model, "Mesh")
-        high_mesh.set("file", os.path.abspath(high_poly_obj))
-        high_mesh.set("scale", "1.0")
-        high_mesh.set("ignorePerVertexColor", "true") # Force texture usage over vertex colors
+        high_mesh.set("File", os.path.abspath(high_poly_obj))
+        high_mesh.set("Scale", "1.000000")
+        high_mesh.set("IgnorePerVertexColor", "true") # Force texture usage over vertex colors
 
         if high_poly_tex and os.path.exists(high_poly_tex):
-            # Batch mode requires explicit base texture element instead of inferring from .mtl
+            # Explicitly define the base texture
             base_tex = ET.SubElement(high_mesh, "BaseTexture")
-            base_tex.set("file", os.path.abspath(high_poly_tex))
+            base_tex.set("File", os.path.abspath(high_poly_tex))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
-        low_mesh.set("file", os.path.abspath(temp_unwrapped_obj))
-        low_mesh.set("scale", "1.0")
+        low_mesh.set("File", os.path.abspath(temp_unwrapped_obj))
+        low_mesh.set("Scale", "1.000000")
         # Ensure Ray distance captures geometry just below or outside the surface
-        low_mesh.set("maximumRayDistanceFront", "0.05")
-        low_mesh.set("maximumRayDistanceBack", "0.05")
+        low_mesh.set("MaxRayDistanceFront", "0.050000")
+        low_mesh.set("MaxRayDistanceBack", "0.050000")
 
-        generation = ET.SubElement(root, "Generate")
-        generation.set("bGenBaseTexture", "true") # Bake Albedo/Diffuse
-        generation.set("bGenNormals", "false")
-        generation.set("bGenAO", "false")
-        generation.set("width", str(max_res))
-        generation.set("height", str(max_res))
-        generation.set("edgePadding", "16") # Increased to 16 to prevent bleeding/tearing around UV seams
-        generation.set("baseTextureFile", os.path.abspath(baked_tex_png))
+        # In the native Settings XML, the baking element is GenerateMaps
+        generation = ET.SubElement(root, "GenerateMaps")
+        generation.set("BakeHighpolyBaseTex", "true") # Bake Albedo/Diffuse
+        generation.set("GenNormals", "false")
+        generation.set("GenAO", "false")
+        generation.set("Width", str(max_res))
+        generation.set("Height", str(max_res))
+        generation.set("EdgePadding", "16") # Increased to 16 to prevent bleeding/tearing around UV seams
+
+        # Output file mapping: In xNormal batch configurations, the generic output path
+        # for GenerateMaps is mapped via the File attribute. xNormal will use this prefix
+        # and automatically append the generated map's suffix (e.g. _baseTex.png).
+        generation.set("File", os.path.abspath(baked_tex_png))
+
         # Ensure antialiasing is turned on for high quality
-        generation.set("aa", "4")
+        generation.set("AA", "4")
 
         # Write XML
         tree = ET.ElementTree(root)
@@ -111,11 +117,19 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
                 print(f"--- xNormal stderr ---\n{e.stderr}")
             return False
 
-        if not os.path.exists(baked_tex_png):
-            print("❌ xNormal failed to generate the baked texture. No output file found.")
-            return False
+        actual_baked_png = baked_tex_png
+        if not os.path.exists(actual_baked_png):
+            # xNormal appends a suffix like _baseTex or _base_color to the File path
+            import glob
+            base_name = os.path.splitext(baked_tex_png)[0]
+            matches = glob.glob(f"{base_name}*.png")
+            if matches:
+                actual_baked_png = matches[0]
+            else:
+                print("❌ xNormal failed to generate the baked texture. No output file found.")
+                return False
 
-        print(f"✅ xNormal bake complete: {baked_tex_png}")
+        print(f"✅ xNormal bake complete: {actual_baked_png}")
 
     except Exception as e:
         print(f"❌ Error during xNormal setup/baking: {e}")
@@ -126,7 +140,7 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
     try:
         from PIL import Image
         # Load the baked texture
-        baked_image = Image.open(baked_tex_png)
+        baked_image = Image.open(actual_baked_png)
 
         # Load the unwrapped mesh and apply the texture
         final_mesh = trimesh.load(temp_unwrapped_obj, force='mesh')
@@ -144,7 +158,7 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         # Cleanup
         if os.path.exists(temp_unwrapped_obj): os.remove(temp_unwrapped_obj)
         if os.path.exists(xnormal_xml_path): os.remove(xnormal_xml_path)
-        if os.path.exists(baked_tex_png): os.remove(baked_tex_png)
+        if os.path.exists(actual_baked_png): os.remove(actual_baked_png)
 
         return True
 
