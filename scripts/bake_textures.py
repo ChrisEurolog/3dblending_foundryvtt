@@ -66,7 +66,6 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         if high_poly_tex and os.path.exists(high_poly_tex):
             # Explicitly define the base texture
             base_tex = ET.SubElement(high_mesh, "BaseTexture")
-            base_tex.set("File", os.path.normpath(os.path.abspath(high_poly_tex)))
             base_tex.text = os.path.normpath(os.path.abspath(high_poly_tex))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
@@ -74,8 +73,8 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
         # Ensure Ray distance captures geometry just below or outside the surface
-        low_mesh.set("MaxRayDistanceFront", "0.050000")
-        low_mesh.set("MaxRayDistanceBack", "0.050000")
+        low_mesh.set("MaxRayDistanceFront", "0.500000")
+        low_mesh.set("MaxRayDistanceBack", "0.500000")
 
         # In the native Settings XML, the baking element is GenerateMaps
         generation = ET.SubElement(root, "GenerateMaps")

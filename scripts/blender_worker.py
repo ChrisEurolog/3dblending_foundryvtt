@@ -161,7 +161,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.03)
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.05)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -242,7 +242,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         try:
             # Bake EMIT to capture pure Albedo bypassing all lighting and PBR calculations
-            bpy.ops.object.bake(type='EMIT', use_selected_to_active=True, margin=8, margin_type='EXTEND')
+            bpy.ops.object.bake(type='EMIT', use_selected_to_active=True, margin=16, margin_type='EXTEND')
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
@@ -255,13 +255,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
         out_dir = os.path.dirname(os.path.abspath(args.output))
-        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.jpg")
+        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'JPEG'
-
-        # Ensure JPEG quality is set for compression
-        if hasattr(bpy.context.scene.render.image_settings, 'quality'):
-            bpy.context.scene.render.image_settings.quality = 90
+        baked_image.file_format = 'PNG'
 
         baked_image.save()
         print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
