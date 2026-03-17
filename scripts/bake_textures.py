@@ -50,18 +50,19 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
 
         high_poly_model = ET.SubElement(root, "HighPolyModel")
         high_mesh = ET.SubElement(high_poly_model, "Mesh")
-        high_mesh.set("File", os.path.abspath(high_poly_obj))
+        high_mesh.set("File", os.path.normpath(os.path.abspath(high_poly_obj)))
         high_mesh.set("Scale", "1.000000")
         high_mesh.set("IgnorePerVertexColor", "true") # Force texture usage over vertex colors
 
         if high_poly_tex and os.path.exists(high_poly_tex):
             # Explicitly define the base texture
             base_tex = ET.SubElement(high_mesh, "BaseTexture")
-            base_tex.set("File", os.path.abspath(high_poly_tex))
+            base_tex.set("File", os.path.normpath(os.path.abspath(high_poly_tex)))
+            base_tex.text = os.path.normpath(os.path.abspath(high_poly_tex))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
-        low_mesh.set("File", os.path.abspath(temp_unwrapped_obj))
+        low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
         # Ensure Ray distance captures geometry just below or outside the surface
         low_mesh.set("MaxRayDistanceFront", "0.050000")
@@ -79,7 +80,7 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         # Output file mapping: In xNormal batch configurations, the generic output path
         # for GenerateMaps is mapped via the File attribute. xNormal will use this prefix
         # and automatically append the generated map's suffix (e.g. _baseTex.png).
-        generation.set("File", os.path.abspath(baked_tex_png))
+        generation.set("File", os.path.normpath(os.path.abspath(baked_tex_png)))
 
         # Ensure antialiasing is turned on for high quality
         generation.set("AA", "4")
@@ -87,6 +88,13 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         # Write XML
         tree = ET.ElementTree(root)
         tree.write(xnormal_xml_path)
+
+        # Kill any existing xNormal processes to prevent hanging
+        try:
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/F', '/IM', 'xNormal.exe'], capture_output=True, check=False)
+        except Exception as e:
+            pass
 
         # Execute xNormal
         # Note: xNormal CLI usually returns immediately while rendering in a background process,
