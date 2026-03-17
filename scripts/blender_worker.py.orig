@@ -247,9 +247,9 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Removed downscaling here because Blender's image.scale() averages edge pixels with the
-        # unrendered black background, causing dark seams ("cracks") around UV islands!
-        pass
+        # Scale the baked image down to the target resolution for antialiasing
+        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
+        baked_image.scale(args.maxtex, args.maxtex)
 
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths

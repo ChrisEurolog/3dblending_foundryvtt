@@ -1,0 +1,7 @@
+--- scripts/blender_worker.py
++++ scripts/blender_worker.py
+@@ -161,3 +161,3 @@
+         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
+-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.05)
++        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+         bpy.ops.object.mode_set(mode='OBJECT')
