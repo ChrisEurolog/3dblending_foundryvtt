@@ -150,7 +150,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
         bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-        bpy.ops.mesh.normals_make_consistent(inside=False) # Fix inside-out faces
+            # bpy.ops.mesh.normals_make_consistent(inside=False) # Omitted per user override to prevent lighting shards
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Now that normals are unlocked, this will actually smooth the surface for the bake!
@@ -161,7 +161,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.ops.object.mode_set(mode='EDIT')
         bpy.ops.mesh.select_all(action='SELECT')
         # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.03)
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
@@ -225,7 +225,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
 
         bpy.context.scene.render.bake.use_selected_to_active = True
-        bpy.context.scene.render.bake.margin = 32 # Ensure healthy bleed margin for high-res before downscaling
+
 
         # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
         # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
@@ -242,7 +242,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         try:
             # Bake EMIT to capture pure Albedo bypassing all lighting and PBR calculations
-            bpy.ops.object.bake(type='EMIT', use_selected_to_active=True)
+            bpy.ops.object.bake(type='EMIT', use_selected_to_active=True, margin=8, margin_type='EXTEND')
         except Exception as e:
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
