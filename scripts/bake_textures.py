@@ -64,21 +64,25 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         high_mesh.set("IgnorePerVertexColor", "true") # Force texture usage over vertex colors
 
         if high_poly_tex and os.path.exists(high_poly_tex):
-            # Explicitly define the base texture
-            base_tex = ET.SubElement(high_mesh, "BaseTexture")
-            base_tex.text = os.path.normpath(os.path.abspath(high_poly_tex))
+            # Based on standard xNormal XML configurations
+            high_mesh.set("BaseTexture", os.path.normpath(os.path.abspath(high_poly_tex)))
+            high_mesh.set("Texture", os.path.normpath(os.path.abspath(high_poly_tex)))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
         low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
-        # Ensure Ray distance captures geometry just below or outside the surface
-        low_mesh.set("MaxRayDistanceFront", "0.500000")
-        low_mesh.set("MaxRayDistanceBack", "0.500000")
+        # Set generous ray distances to ensure the high-poly mesh is captured
+        # The user's red models indicate missed rays or missing texture.
+        low_mesh.set("MaxRayDistanceFront", "2.000000")
+        low_mesh.set("MaxRayDistanceBack", "2.000000")
 
         # In the native Settings XML, the baking element is GenerateMaps
         generation = ET.SubElement(root, "GenerateMaps")
         generation.set("BakeHighpolyBaseTex", "true") # Bake Albedo/Diffuse
+        generation.set("BakeBaseColor", "true") # Add fallback attribute
+        # Set missing ray color to black to prevent glaring red cracks
+        generation.set("BackgroundColor", "0,0,0")
         generation.set("GenNormals", "false")
         generation.set("GenAO", "false")
         generation.set("Width", str(max_res))
