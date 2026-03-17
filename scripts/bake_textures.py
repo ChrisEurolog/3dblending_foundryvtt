@@ -15,7 +15,16 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
 
         mesh = trimesh.load(low_poly_raw_obj, force='mesh')
 
-        vmapping, indices, uvs = xatlas.parametrize(mesh.vertices, mesh.faces)
+        # Use Atlas to configure padding and prevent texture bleed across UV seams
+        atlas = xatlas.Atlas()
+        atlas.add_mesh(mesh.vertices, mesh.faces)
+
+        pack_options = xatlas.PackOptions()
+        pack_options.padding = 8 # Provide enough pixel padding between UV islands
+
+        atlas.generate(pack_options=pack_options)
+        vmapping, indices, uvs = atlas[0]
+
         vertices = mesh.vertices[vmapping]
 
         unwrapped_mesh = trimesh.Trimesh(vertices=vertices, faces=indices, process=False)
@@ -75,7 +84,7 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         generation.set("GenAO", "false")
         generation.set("Width", str(max_res))
         generation.set("Height", str(max_res))
-        generation.set("EdgePadding", "16") # Increased to 16 to prevent bleeding/tearing around UV seams
+        generation.set("EdgePadding", "32") # Increased to 32 to prevent bleeding/tearing around UV seams
 
         # Output file mapping: In xNormal batch configurations, the generic output path
         # for GenerateMaps is mapped via the File attribute. xNormal will use this prefix
