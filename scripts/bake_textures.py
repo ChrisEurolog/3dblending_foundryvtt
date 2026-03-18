@@ -72,10 +72,11 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
         low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
-        # Set generous ray distances to ensure the high-poly mesh is captured
-        # The user's red models indicate missed rays or missing texture.
-        low_mesh.set("MaxRayDistanceFront", "2.000000")
-        low_mesh.set("MaxRayDistanceBack", "2.000000")
+        # Ray distances must be small for a 1.0 unit model. A distance of 2.0
+        # causes rays to pass through the entire model, mapping the back of the model
+        # to the front (shattered appearance with black ray misses).
+        low_mesh.set("MaxRayDistanceFront", "0.050000")
+        low_mesh.set("MaxRayDistanceBack", "0.050000")
 
         # In the native Settings XML, the baking element is GenerateMaps
         generation = ET.SubElement(root, "GenerateMaps")
