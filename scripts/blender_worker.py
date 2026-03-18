@@ -189,12 +189,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
         # 3. HIGH-TO-LOW POLY BAKING
         # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
-        bake_res = args.maxtex * 2
-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
+        # We bake natively at the target resolution to avoid downsampling artifacts (bilinear interpolation)
+        # which can bleed unrendered background pixels into the edges of UV islands causing tearing/seams.
+        bake_res = args.maxtex
+        print(f"🔹 Baking High-Def Textures directly at ({bake_res}x{bake_res}) to avoid interpolation tearing...")
         bpy.context.scene.render.engine = 'CYCLES'
         bpy.context.scene.cycles.device = 'GPU'
         bpy.context.scene.cycles.samples = 16
@@ -247,13 +245,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
             print(f"❌ Bake Error: {e}")
             bpy.ops.wm.quit_blender()
 
-        # Removed downscaling here because Blender's image.scale() averages edge pixels with the
-        # unrendered black background, causing dark seams ("cracks") around UV islands!
-        pass
-
         # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
         # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
         # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
+        # Saving as PNG prevents lossy JPEG compression artifacts along sharp UV edges, resolving "tearing".
         out_dir = os.path.dirname(os.path.abspath(args.output))
         temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
         baked_image.filepath_raw = temp_img_path
