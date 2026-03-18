@@ -4,3 +4,4 @@ requests
 trimesh
 xatlas
 Pillow
+scipy

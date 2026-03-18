@@ -19,7 +19,11 @@ def unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, output_glb, 
         vertices = mesh.vertices[vmapping]
 
         # Preserve original smoothed normals to prevent "shattered" look at UV seams
-        normals = mesh.vertex_normals[vmapping] if hasattr(mesh, 'vertex_normals') else None
+        try:
+            normals = mesh.vertex_normals[vmapping] if hasattr(mesh, 'vertex_normals') else None
+        except Exception as e:
+            print(f"⚠️ Could not calculate smooth vertex normals (missing scipy?): {e}")
+            normals = None
 
         unwrapped_mesh = trimesh.Trimesh(vertices=vertices, faces=indices, vertex_normals=normals, process=False)
         unwrapped_mesh.visual = trimesh.visual.TextureVisuals(uv=uvs)
