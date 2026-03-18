@@ -176,7 +176,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     im_cmd = [
         instant_meshes_exe,
         "-o", low_poly_raw_obj,
-        "-v", str(max(target_v // 2, 100)),
+        "-v", str(target_v),
         high_poly_obj
     ]
 
