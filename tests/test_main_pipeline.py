@@ -145,6 +145,8 @@ class TestMainPipeline(unittest.TestCase):
             temp_dir="/temp",
             output_dir="/output",
             blender_exe="blender",
+            instant_meshes_exe="instantmeshes",
+            xnormal_exe="xnormal",
             gltfpack_exe="gltfpack",
             profile_data=profile_data,
             target_v=1000,
