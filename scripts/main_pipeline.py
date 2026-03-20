@@ -271,6 +271,18 @@ def run_pipeline():
     instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
     xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe'), root_dir)
     gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
+
+    # Check for executables
+    try:
+        subprocess.run([blender_exe, "--version"], capture_output=True, check=True)
+    except OSError:
+        print(f"❌ Error: Blender executable not found at '{blender_exe}'. Please check config.json.")
+        return
+
+    if not (os.path.exists(instant_meshes_exe) or shutil.which(instant_meshes_exe)):
+        print(f"❌ Error: Instant Meshes executable not found at '{instant_meshes_exe}'. Please check config.json.")
+        return
+
     source_dir = resolve_path(paths['source_dir'], root_dir)
     output_dir = resolve_path(paths['output_dir'], root_dir)
     temp_dir = resolve_path(paths['temp_dir'], root_dir)
