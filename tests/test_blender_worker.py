@@ -289,5 +289,60 @@ class TestBlenderWorker(unittest.TestCase):
             except AssertionError:
                 pass # Expected
 
+    def test_normals_make_consistent_called(self):
+        """
+        Verifies that normals_make_consistent(inside=False) is called to ensure adherence to Foundry VTT token compatibility rules.
+        """
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        # Setup standard object requirements
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [MagicMock()]
+        mock_obj.dimensions = (1.0, 1.0, 1.0)
+
+        mock_matrix_result = MagicMock()
+        mock_matrix_result.z = 0.0
+        mock_obj.matrix_world = MagicMock()
+        mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
+
+        mock_objects = MagicMock()
+        mock_objects.__iter__.return_value = [mock_obj]
+        mock_bpy.data.objects = mock_objects
+
+        mock_bpy.context.view_layer.objects.active = mock_obj
+
+        mock_bm = MagicMock()
+        mock_bm.verts = []
+        mock_bm.edges = []
+        mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        # Ensure new materials can be added
+        mock_bpy.data.materials.new.return_value = MagicMock()
+        mock_bpy.data.images.new.return_value = MagicMock()
+
+        # Support objects removal without error
+        mock_bpy.data.objects.remove = MagicMock()
+
+        # Mock timer register to just call the function immediately
+        def mock_register(func):
+            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+            func()
+
+        mock_bpy.app.timers.register.side_effect = mock_register
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path'), \
+             patch('builtins.print'):
+
+            worker.process()
+
+            try:
+                mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+            except AssertionError:
+                self.fail("normals_make_consistent should have been called.")
+
 if __name__ == '__main__':
     unittest.main()
