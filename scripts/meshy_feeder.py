@@ -4,6 +4,7 @@ import base64
 import requests
 import subprocess
 import sys
+import urllib.parse
 from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
@@ -64,6 +65,16 @@ def download_model(task_id, filename):
 
         if status == 'SUCCEEDED':
             model_url = response.json()['model_urls']['glb']
+
+            parsed_url = urllib.parse.urlparse(model_url)
+            if parsed_url.scheme != 'https':
+                print(f"❌ Security Error: Invalid URL scheme '{parsed_url.scheme}'. Expected 'https'.")
+                return False
+
+            if not parsed_url.hostname.endswith('.meshy.ai') and parsed_url.hostname != 'meshy.ai':
+                print(f"❌ Security Error: Invalid URL host '{parsed_url.hostname}'.")
+                return False
+
             model_data = requests.get(model_url, timeout=DOWNLOAD_TIMEOUT).content
 
             output_path = os.path.join(EXPORT_DIR, f"{os.path.splitext(filename)[0]}.glb")
