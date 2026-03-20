@@ -197,7 +197,6 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
         instant_meshes_exe,
         "-o", low_poly_raw_obj,
         "-v", str(im_target),
-        "-q", # Pure quad mesh mode
         sculpt_obj_path
     ]
 
