@@ -124,6 +124,17 @@ class TestMainPipeline(unittest.TestCase):
         self.assertEqual(files, ["file1.glb", "file3.glb"])
         mock_listdir.assert_called_once_with("/source")
 
+    @patch('builtins.print')
+    def test_confirm_settings_auto(self, mock_print):
+        """Test confirm_settings with auto=True."""
+        profile_key = "test_profile"
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.confirm_settings(profile_key, profile_data, auto=True)
+
+        self.assertEqual(result, (1000, 1024))
+        mock_print.assert_called()
+
     @patch('scripts.main_pipeline.os.path.exists')
     @patch('scripts.main_pipeline.os.remove')
     @patch('scripts.main_pipeline.subprocess.run')
