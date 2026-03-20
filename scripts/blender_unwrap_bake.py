@@ -90,17 +90,17 @@ def process():
 
         high_poly_model = ET.SubElement(root, "HighPolyModel")
         high_mesh = ET.SubElement(high_poly_model, "Mesh")
-        high_mesh.set("File", os.path.abspath(high_poly_obj))
+        high_mesh.set("File", os.path.normpath(os.path.abspath(high_poly_obj)))
         high_mesh.set("Scale", "1.000000")
         high_mesh.set("IgnorePerVertexColor", "true") # Force texture usage over vertex colors
 
         if high_poly_tex and os.path.exists(high_poly_tex):
             # Explicitly define the base texture on the Mesh tag
-            high_mesh.set("BaseTex", os.path.abspath(high_poly_tex))
+            high_mesh.set("BaseTex", os.path.normpath(os.path.abspath(high_poly_tex)))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
-        low_mesh.set("File", os.path.abspath(temp_unwrapped_obj))
+        low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
         # Ensure Ray distance captures geometry just below or outside the surface
         low_mesh.set("MaxRayDistanceFront", "0.050000")
@@ -118,7 +118,7 @@ def process():
         # Output file mapping: In xNormal batch configurations, the generic output path
         # for GenerateMaps is mapped via the File attribute. xNormal will use this prefix
         # and automatically append the generated map's suffix (e.g. _baseTex.png).
-        generation.set("File", os.path.abspath(baked_tex_png))
+        generation.set("File", os.path.normpath(os.path.abspath(baked_tex_png)))
 
         # Ensure antialiasing is turned on for high quality
         generation.set("AA", "4")
@@ -126,6 +126,22 @@ def process():
         # Write XML
         tree = ET.ElementTree(root)
         tree.write(xnormal_xml_path)
+
+        # Terminate any lingering GUI instances of xNormal which cause the batch process to hang or crash
+        if os.name == 'nt':
+            subprocess.run(["taskkill", "/F", "/IM", "xNormal.exe"], capture_output=True)
+
+        def print_xnormal_log():
+            try:
+                debug_log_path = os.path.join(os.environ['USERPROFILE'], 'Documents', 'xNormal', 'xNormal_debugLog.txt')
+                if os.path.exists(debug_log_path):
+                    with open(debug_log_path, 'r') as f:
+                        print("\n--- xNormal Debug Log ---")
+                        lines = f.readlines()
+                        print("".join(lines[-30:]))
+                        print("-------------------------")
+            except Exception:
+                pass
 
         # Execute xNormal
         # Note: xNormal CLI usually returns immediately while rendering in a background process,
@@ -140,8 +156,9 @@ def process():
             print("✅ xNormal bake complete")
         except subprocess.CalledProcessError as e:
             print(f"❌ xNormal Engine Error: {e}")
-            if e.stdout: print(e.stdout)
-            if e.stderr: print(e.stderr)
+            if e.stdout: print("STDOUT:\n", e.stdout)
+            if e.stderr: print("STDERR:\n", e.stderr)
+            print_xnormal_log()
             sys.exit(1)
 
         # Wait for texture to be generated if process exited early
