@@ -7,6 +7,20 @@ import scripts.main_pipeline as mp
 
 class TestMainPipeline(unittest.TestCase):
 
+    @patch('scripts.main_pipeline.os.path.exists')
+    @patch('builtins.print')
+    def test_load_config_invalid_json(self, mock_print, mock_exists):
+        """Test load_config handles invalid JSON by returning None and printing an error."""
+        mock_exists.return_value = True
+
+        # mock_open reads invalid JSON
+        m = mock_open(read_data='{ "invalid_json": ')
+        with patch('builtins.open', m):
+            result = mp.load_config('/fake/dir')
+
+        self.assertIsNone(result)
+        mock_print.assert_called_with("❌ Error: Config file is not valid JSON.")
+
     def test_get_app_paths_frozen_with_meipass(self):
         """Test path resolution when frozen (PyInstaller) and _MEIPASS is present."""
         fake_exe = os.path.abspath(os.path.join('path', 'to', 'exe'))
