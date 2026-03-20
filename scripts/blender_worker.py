@@ -304,8 +304,8 @@ def finish_export(args, high_obj, low_obj, used_decimate):
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
 
-    verts = list(low_obj.data.vertices)
-    if verts:
+    verts = low_obj.data.vertices
+    if len(verts) > 0:
         mw = low_obj.matrix_world
         bottom_z = min((mw @ v.co).z for v in verts)
         low_obj.location.z -= bottom_z
