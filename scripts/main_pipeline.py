@@ -203,9 +203,10 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     try:
         # Some versions of instant meshes output to stdout/stderr, so we capture or let it flow
         subprocess.run(im_cmd, check=True)
+        print("✅ Instant Meshes generated raw low poly model.")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Instant Meshes Error on {f}: {e}")
-        return
+        print(f"❌ Error running Instant Meshes: {e}")
+        return False
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
