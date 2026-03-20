@@ -86,6 +86,25 @@ class TestMainPipeline(unittest.TestCase):
         files = mp.get_files_to_process("single", "some/path/to/file", "/source")
         self.assertEqual(files, ["file.glb"])
 
+        files = mp.get_files_to_process("single", "..\\..\\..\\Windows\\System32\\cmd.exe", "/source")
+        self.assertEqual(files, ["cmd.exe.glb"])
+
+        files = mp.get_files_to_process("single", "some\\path\\to\\file", "/source")
+        self.assertEqual(files, ["file.glb"])
+
+        files = mp.get_files_to_process("single", ".", "/source")
+        self.assertEqual(files, [])
+
+        files = mp.get_files_to_process("single", "..", "/source")
+        self.assertEqual(files, [])
+
+    @patch('builtins.input', return_value="")
+    def test_get_files_to_process_single_empty_input(self, mock_input):
+        """Test single mode handling empty filename prompt."""
+        files = mp.get_files_to_process("single", "", "/source")
+        self.assertEqual(files, [])
+        mock_input.assert_called_once()
+
     def test_get_processing_mode_args_provided(self):
         """Test get_processing_mode when args.mode is provided."""
         self.assertEqual(mp.get_processing_mode("single"), "single")
