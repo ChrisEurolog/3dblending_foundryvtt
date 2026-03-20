@@ -76,7 +76,7 @@ def validate_gltf_path(filepath):
              with open(filepath, 'r', encoding='utf-8') as f:
                 try:
                     data = json.load(f)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, EOFError):
                     raise ValueError("Invalid glTF file: JSON is malformed")
         else:
              return True
