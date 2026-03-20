@@ -1,70 +1,85 @@
 import os
 import sys
 import unittest
-from unittest.mock import patch, MagicMock
+import json
+from unittest.mock import patch, mock_open
 import scripts.main_pipeline as mp
 
 class TestMainPipeline(unittest.TestCase):
 
-    def test_is_frozen_true(self):
-        with patch('scripts.main_pipeline.sys') as mock_sys:
-            mock_sys.frozen = True
-            self.assertTrue(mp.is_frozen())
+    # --- Path Resolution Tests ---
 
-    def test_is_frozen_false(self):
-        with patch('scripts.main_pipeline.sys') as mock_sys:
-            mock_sys.frozen = False
-            self.assertFalse(mp.is_frozen())
+    def test_get_app_paths_dev(self):
+        """Test path resolution in development mode (not frozen)."""
+        with patch.dict(sys.__dict__, {'frozen': False}):
+            paths = mp.get_app_paths()
 
-    def test_is_frozen_missing(self):
-        with patch('scripts.main_pipeline.sys') as mock_sys:
-            if hasattr(mock_sys, 'frozen'):
-                del mock_sys.frozen
-            self.assertFalse(mp.is_frozen())
+            actual_file = os.path.abspath(mp.__file__)
+            expected_scripts = os.path.dirname(actual_file)
+            expected_base = os.path.abspath(os.path.join(expected_scripts, '..'))
 
-    def test_get_base_dir_not_frozen(self):
-        with patch('scripts.main_pipeline.is_frozen', return_value=False):
-            fake_file = os.path.abspath(os.path.join('scripts', 'main_pipeline.py'))
-            with patch('scripts.main_pipeline.__file__', fake_file):
-                base_dir = mp.get_base_dir()
-                expected = os.path.abspath(os.path.join(os.path.dirname(fake_file), '..'))
-                self.assertEqual(base_dir, expected)
+            self.assertEqual(paths.scripts, expected_scripts)
+            self.assertEqual(paths.base, expected_base)
 
-    def test_get_base_dir_frozen(self):
-        with patch('scripts.main_pipeline.is_frozen', return_value=True):
-            fake_exe = os.path.abspath(os.path.join('path', 'to', 'exe'))
-            with patch('scripts.main_pipeline.sys') as mock_sys:
-                mock_sys.executable = fake_exe
-                base_dir = mp.get_base_dir()
-                expected = os.path.dirname(fake_exe)
-                self.assertEqual(base_dir, expected)
+    def test_get_app_paths_frozen_with_meipass(self):
+        """Test path resolution in frozen mode with sys._MEIPASS."""
+        fake_exe = '/home/user/repo/dist/main_pipeline.exe'
+        fake_meipass = '/tmp/_MEI12345'
+        with patch.dict(sys.__dict__, {'frozen': True, 'executable': fake_exe, '_MEIPASS': fake_meipass}):
+            paths = mp.get_app_paths()
+            self.assertEqual(paths.scripts, fake_meipass)
+            self.assertEqual(paths.base, os.path.dirname(fake_exe))
 
-    def test_get_script_dir_not_frozen(self):
-        with patch('scripts.main_pipeline.is_frozen', return_value=False):
-            fake_file = os.path.abspath(os.path.join('scripts', 'main_pipeline.py'))
-            with patch('scripts.main_pipeline.__file__', fake_file):
-                script_dir = mp.get_script_dir()
-                expected = os.path.dirname(fake_file)
-                self.assertEqual(script_dir, expected)
+    def test_get_app_paths_frozen_no_meipass(self):
+        """Test path resolution in frozen mode without sys._MEIPASS."""
+        fake_exe = '/home/user/repo/dist/main_pipeline.exe'
+        with patch.dict(sys.__dict__, {'frozen': True, 'executable': fake_exe}):
+            # Ensure _MEIPASS is absent during the test
+            with patch.dict(sys.__dict__):
+                if '_MEIPASS' in sys.__dict__:
+                    del sys._MEIPASS
+                paths = mp.get_app_paths()
+                self.assertEqual(paths.scripts, os.path.dirname(fake_exe))
+                self.assertEqual(paths.base, os.path.dirname(fake_exe))
 
-    def test_get_script_dir_frozen_meipass(self):
-        with patch('scripts.main_pipeline.is_frozen', return_value=True):
-            fake_meipass = '/tmp/_MEI12345'
-            with patch('scripts.main_pipeline.sys') as mock_sys:
-                mock_sys._MEIPASS = fake_meipass
-                script_dir = mp.get_script_dir()
-                self.assertEqual(script_dir, fake_meipass)
+    def test_resolve_path_absolute(self):
+        abs_path = os.path.abspath('/some/path')
+        self.assertEqual(mp.resolve_path(abs_path, '/root'), abs_path)
 
-    def test_get_script_dir_frozen_no_meipass(self):
-        with patch('scripts.main_pipeline.is_frozen', return_value=True):
-            fake_exe = os.path.abspath(os.path.join('path', 'to', 'exe'))
-            with patch('scripts.main_pipeline.sys') as mock_sys:
-                if hasattr(mock_sys, '_MEIPASS'):
-                    del mock_sys._MEIPASS
-                mock_sys.executable = fake_exe
-                script_dir = mp.get_script_dir()
-                expected = os.path.dirname(fake_exe)
-                self.assertEqual(script_dir, expected)
+    def test_resolve_path_relative(self):
+        root = '/root'
+        rel_path = 'subdir/file.txt'
+        expected = os.path.normpath(os.path.join(root, rel_path))
+        self.assertEqual(mp.resolve_path(rel_path, root), expected)
+
+    # --- Config Loading Tests ---
+
+    @patch('os.path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data='{"paths": {"blender_exe": "blender"}}')
+    def test_load_config_success(self, mock_file, mock_exists):
+        mock_exists.return_value = True
+        config = mp.load_config('/fake/dir')
+
+        self.assertIsNotNone(config)
+        self.assertEqual(config['paths']['blender_exe'], 'blender')
+        expected_path = os.path.normpath('/fake/dir/axiom_config.json')
+        mock_exists.assert_called_with(expected_path)
+        mock_file.assert_called_with(expected_path)
+
+    @patch('os.path.exists')
+    def test_load_config_file_not_found(self, mock_exists):
+        mock_exists.return_value = False
+        with patch('builtins.print') as mock_print:
+            config = mp.load_config('/fake/dir')
+            self.assertIsNone(config)
+            mock_print.assert_called()
+
+    @patch('os.path.exists')
+    @patch('builtins.open', new_callable=mock_open, read_data='{invalid_json}')
+    def test_load_config_invalid_json(self, mock_file, mock_exists):
+        mock_exists.return_value = True
+        with self.assertRaises(json.JSONDecodeError):
+            mp.load_config('/fake/dir')
 
 if __name__ == '__main__':
     unittest.main()
