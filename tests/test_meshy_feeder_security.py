@@ -87,5 +87,16 @@ class TestMeshyFeederSecurity(unittest.TestCase):
         with self.assertRaises(MockTimeout):
             feeder.download_model("task_123", "test.png")
 
+    @patch('os.path.getsize')
+    def test_get_base64_image_size_limit(self, mock_getsize):
+        """Test that get_base64_image raises a ValueError if the file is too large."""
+        # Set the mock to return a size larger than the limit
+        mock_getsize.return_value = feeder.MAX_IMAGE_SIZE + 1
+
+        with self.assertRaises(ValueError) as context:
+            feeder.get_base64_image("dummy.png")
+
+        self.assertIn("exceeds the maximum allowed size", str(context.exception))
+
 if __name__ == '__main__':
     unittest.main()
