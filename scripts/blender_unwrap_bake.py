@@ -86,40 +86,42 @@ def process():
     try:
         # Construct xNormal batch XML matching xNormal 3.19.3 schema
         # Reference: xNormal requires exact casing and specific tags like <xNormal>, not <Settings>.
-        root = ET.Element("xNormal")
-        root.set("version", "3.19.3.39693")
+        # PascalCase XML tags and attributes for xNormal batch settings.
+        # Ensure root tag is Settings.
+        root = ET.Element("Settings")
+        root.set("Version", "3.19.3.39693")
 
         high_poly_model = ET.SubElement(root, "HighPolyModel")
-        high_mesh = ET.SubElement(high_poly_model, "Mesh",
-            file=os.path.normpath(os.path.abspath(high_poly_obj)),
-            scale="1.000000",
-            ignorePerVertexColor="true"
-        )
+        high_mesh = ET.SubElement(high_poly_model, "Mesh")
+        high_mesh.set("File", os.path.normpath(os.path.abspath(high_poly_obj)))
+        high_mesh.set("Scale", "1.000000")
+        high_mesh.set("IgnorePerVertexColor", "true")
         if high_poly_tex and os.path.exists(high_poly_tex):
-            high_mesh.set("baseTex", os.path.normpath(os.path.abspath(high_poly_tex)))
+            high_mesh.set("BaseTex", os.path.normpath(os.path.abspath(high_poly_tex)))
+            high_mesh.set("Texture", os.path.normpath(os.path.abspath(high_poly_tex)))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
-        low_mesh = ET.SubElement(low_poly_model, "Mesh",
-            file=os.path.normpath(os.path.abspath(temp_unwrapped_obj)),
-            scale="1.000000",
-            maxRayDistanceFront="0.050000",
-            maxRayDistanceBack="0.050000",
-            matchUv="true"
-        )
+        low_mesh = ET.SubElement(low_poly_model, "Mesh")
+        low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
+        low_mesh.set("Scale", "1.000000")
+        low_mesh.set("MaxRayDistanceFront", "0.050000")
+        low_mesh.set("MaxRayDistanceBack", "0.050000")
+        low_mesh.set("MatchUV", "true")
 
-        generation = ET.SubElement(root, "GenerateMaps",
-            width=str(max_res),
-            height=str(max_res),
-            edgePadding="16",
-            file=os.path.normpath(os.path.abspath(baked_tex_png)),
-            aa="4",
-            genNormals="false",
-            genAO="false",
-            bakeHighpolyBaseTex="true"
-        )
+        generation = ET.SubElement(root, "GenerateMaps")
+        generation.set("Width", str(max_res))
+        generation.set("Height", str(max_res))
+        generation.set("EdgePadding", "16")
+        generation.set("File", os.path.normpath(os.path.abspath(baked_tex_png)))
+        generation.set("AA", "4")
+        generation.set("GenNormals", "false")
+        generation.set("GenAO", "false")
+        generation.set("BakeHighpolyBaseTex", "true")
 
         # Add Options block which xNormal batch processor expects
-        options = ET.SubElement(root, "Options", threadPriority="Normal", bucketSize="32")
+        options = ET.SubElement(root, "Options")
+        options.set("ThreadPriority", "Normal")
+        options.set("BucketSize", "32")
 
         # Write XML
         tree = ET.ElementTree(root)

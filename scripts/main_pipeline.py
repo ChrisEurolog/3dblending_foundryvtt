@@ -188,10 +188,16 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     if not os.path.exists(sculpt_obj_path):
         sculpt_obj_path = high_poly_obj
 
+    # Instant Meshes generates quads (2 triangles each), and UV unwrapping duplicates
+    # vertices along every seam. To hit the target vertex count in the final glTF,
+    # we must strictly limit Instant Meshes to half the requested vertices.
+    im_target = max(target_v // 2, 100)
+
     im_cmd = [
         instant_meshes_exe,
         "-o", low_poly_raw_obj,
-        "-v", str(target_v),
+        "-v", str(im_target),
+        "-q", # Pure quad mesh mode
         sculpt_obj_path
     ]
 
