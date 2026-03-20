@@ -140,6 +140,21 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
+def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, xnormal_exe, target_v):
+    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
+
+    unwrap_cmd = [
+        blender_exe, "--background", "--python", blender_unwrap, "--",
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
+    ]
+
+    try:
+        subprocess.run(unwrap_cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender UV/Bake Error on {f}: {e}")
+        return False
+
 def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
     input_path = os.path.join(source_dir, f)
     if not os.path.exists(input_path):
@@ -209,18 +224,10 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
-    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
-
-    unwrap_cmd = [
-        blender_exe, "--background", "--python", blender_unwrap, "--",
-        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
-    ]
-
-    try:
-        subprocess.run(unwrap_cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Blender UV/Bake Error on {f}: {e}")
-        return
+    bake_success = unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, xnormal_exe, target_v)
+    if not bake_success:
+        print("❌ Texture baking failed. Aborting processing for this file.")
+        return False
 
     # Meshopt Pass
     if profile_key != "archive":

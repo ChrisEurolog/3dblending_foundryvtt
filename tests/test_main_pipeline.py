@@ -158,5 +158,52 @@ class TestMainPipeline(unittest.TestCase):
 
         mock_move.assert_called_once_with("/source/test.glb", "/archive/test.glb")
 
+    @patch('scripts.main_pipeline.os.path.exists')
+    @patch('scripts.main_pipeline.os.remove')
+    @patch('scripts.main_pipeline.subprocess.run')
+    @patch('scripts.main_pipeline.unwrap_and_bake')
+    @patch('scripts.main_pipeline.shutil.copy')
+    @patch('scripts.main_pipeline.shutil.move')
+    @patch('builtins.print')
+    def test_process_file_unwrap_and_bake_failure(self, mock_print, mock_move, mock_copy, mock_unwrap_and_bake, mock_run, mock_remove, mock_exists):
+        """Test process_file handles unwrapping and baking failure."""
+        mock_exists.return_value = True
+
+        mock_unwrap_and_bake.return_value = False
+
+        app_paths = MagicMock()
+        app_paths.scripts = '/scripts'
+
+        profile_data = {'norm': 1, 'matte': 1}
+
+        result = mp.process_file(
+            f="test.glb",
+            source_dir="/source",
+            temp_dir="/temp",
+            output_dir="/output",
+            blender_exe="blender",
+            instant_meshes_exe="instantmeshes",
+            xnormal_exe="xnormal",
+            gltfpack_exe="gltfpack",
+            profile_data=profile_data,
+            target_v=1000,
+            max_res=1024,
+            app_paths=app_paths,
+            profile_key="token_production",
+            archive_dir="/archive"
+        )
+
+        # Verify that process_file returned False
+        self.assertFalse(result)
+
+        # Verify that unwrap_and_bake was called
+        mock_unwrap_and_bake.assert_called_once()
+
+        # Verify that an error message was printed
+        mock_print.assert_any_call("❌ Texture baking failed. Aborting processing for this file.")
+
+        # Because unwrap and bake failed, move should NOT be called
+        mock_move.assert_not_called()
+
 if __name__ == '__main__':
     unittest.main()
