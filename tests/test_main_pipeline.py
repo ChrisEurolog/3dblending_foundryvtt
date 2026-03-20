@@ -44,6 +44,15 @@ class TestMainPipeline(unittest.TestCase):
             self.assertEqual(paths.base, expected_base)
             self.assertEqual(paths.scripts, expected_scripts)
 
+    def test_parse_args_no_arguments(self):
+        """Test parse_args when no arguments are provided."""
+        with patch('sys.argv', ['main_pipeline.py']):
+            args = mp.parse_args()
+            self.assertIsNone(args.mode)
+            self.assertIsNone(args.profile)
+            self.assertIsNone(args.input)
+            self.assertFalse(args.auto)
+
     def test_get_app_paths_not_frozen(self):
         """Test path resolution when running as a script (dev mode)."""
         fake_file = os.path.abspath(os.path.join('scripts', 'main_pipeline.py'))
