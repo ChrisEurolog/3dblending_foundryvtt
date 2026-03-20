@@ -1,0 +1,9 @@
+--- scripts/blender_worker.py
++++ scripts/blender_worker.py
+@@ -248,3 +248,3 @@
+-        # Scale the baked image down to the target resolution for antialiasing
+-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
+-        baked_image.scale(args.maxtex, args.maxtex)
++        # Removed downscaling here because Blender's image.scale() averages edge pixels with the
++        # unrendered black background, causing dark seams ("cracks") around UV islands!
++        pass

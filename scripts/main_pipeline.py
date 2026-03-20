@@ -6,6 +6,8 @@ import argparse
 import sys
 from collections import namedtuple
 
+# Import pipeline steps directly instead of subprocesses for PyInstaller compatibility
+
 AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
 
 def get_app_paths():
@@ -138,7 +140,7 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
-def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
+def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
     input_path = os.path.join(source_dir, f)
     if not os.path.exists(input_path):
             print(f"⚠️ Warning: File not found: {input_path}")
@@ -149,34 +151,77 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe,
 
     print(f"🔹 Processing: {f}")
 
-    # Blender Pass
-    # Locate the bundled or relative blender_worker.py
+    # 1. Blender Extraction Pass
+    print("  Running Blender Extraction pass...")
+    high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
+    high_poly_tex = high_poly_obj.replace(".obj", "_diffuse.png")
+
     script_dir = app_paths.scripts
-    blender_worker = os.path.join(script_dir, "blender_worker.py")
+    blender_extract = os.path.join(script_dir, "blender_extract.py")
 
-    if not os.path.exists(blender_worker):
-            print(f"❌ Error: blender_worker.py not found at {blender_worker}")
-            raise FileNotFoundError(f"blender_worker.py not found at {blender_worker}")
+    # Decimate down to ~4x the target vertices (for example, ~80k vertices for a 20k target)
+    # This prevents Instant Meshes from choking on massive 800k+ inputs, while
+    # leaving enough geometric detail for a clean retopology.
+    target_extract_v = str(target_v * 4)
 
-    blender_cmd = [
-        blender_exe, "--python", blender_worker, "--",
-        "--input", input_path,
-        "--output", temp_out,
-        "--target", str(target_v),
-        "--maxtex", str(max_res),
-        "--normalize", str(profile_data['norm']),
-        "--matte", str(profile_data['matte'])
+    extract_cmd = [
+        blender_exe, "--background", "--python", blender_extract, "--",
+        input_path, high_poly_obj, target_extract_v
     ]
 
-    print("  Running Blender pass...")
     try:
-        subprocess.run(blender_cmd, check=True)
+        subprocess.run(extract_cmd, check=True)
     except subprocess.CalledProcessError as e:
-        print(f"❌ Blender Error on {f}: {e}")
+        print(f"❌ Blender Extraction Error on {f}: {e}")
         return
-    except FileNotFoundError:
-        print(f"❌ Error: Blender executable not found at {blender_exe}")
-        raise FileNotFoundError(f"Blender executable not found at {blender_exe}")
+
+    # 2. Instant Meshes Pass
+    print("  Running Instant Meshes pass...")
+    low_poly_raw_obj = os.path.join(temp_dir, f.replace(".glb", "_low_raw.obj"))
+    if not os.path.exists(instant_meshes_exe):
+        print(f"❌ Error: Instant Meshes executable not found at {instant_meshes_exe}")
+        raise FileNotFoundError(f"Instant Meshes executable not found at {instant_meshes_exe}")
+
+    # Pass the pre-decimated sculpt obj to Instant Meshes to hit targets better
+    # and preserve pure quads.
+    sculpt_obj_path = high_poly_obj.replace(".obj", "_sculpt.obj")
+    if not os.path.exists(sculpt_obj_path):
+        sculpt_obj_path = high_poly_obj
+
+    # Instant Meshes generates quads (2 triangles each), and UV unwrapping duplicates
+    # vertices along every seam. To hit the target vertex count in the final glTF,
+    # we must strictly limit Instant Meshes to half the requested vertices.
+    im_target = max(target_v // 2, 100)
+
+    im_cmd = [
+        instant_meshes_exe,
+        "-o", low_poly_raw_obj,
+        "-v", str(im_target),
+        "-q", # Pure quad mesh mode
+        sculpt_obj_path
+    ]
+
+    try:
+        # Some versions of instant meshes output to stdout/stderr, so we capture or let it flow
+        subprocess.run(im_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Instant Meshes Error on {f}: {e}")
+        return
+
+    # 3. Blender UV Unwrap and Bake Pass
+    print("  Running Blender UV Unwrap and Bake pass...")
+    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
+
+    unwrap_cmd = [
+        blender_exe, "--background", "--python", blender_unwrap, "--",
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
+    ]
+
+    try:
+        subprocess.run(unwrap_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender UV/Bake Error on {f}: {e}")
+        return
 
     # Meshopt Pass
     if profile_key != "archive":
@@ -224,6 +269,8 @@ def run_pipeline():
     # Resolve paths
     # Blender EXE might be system path or absolute.
     blender_exe = paths['blender_exe']
+    instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
+    xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe'), root_dir)
     gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
     source_dir = resolve_path(paths['source_dir'], root_dir)
     output_dir = resolve_path(paths['output_dir'], root_dir)
@@ -283,7 +330,7 @@ def run_pipeline():
 
     for f in files:
         try:
-            process_file(f, source_dir, temp_dir, output_dir, blender_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key, archive_dir)
+            process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key, archive_dir)
         except FileNotFoundError as e:
              # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")

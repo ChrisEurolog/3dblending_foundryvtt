@@ -1,0 +1,13 @@
+--- scripts/blender_worker.py
++++ scripts/blender_worker.py
+@@ -192,4 +192,2 @@
+-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
+-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
+-        bake_res = args.maxtex * 2
+-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
++        bake_res = args.maxtex
++        print(f"🔹 Baking Textures at ({bake_res}x{bake_res})...")
+@@ -248,4 +246,2 @@
+-        # Scale the baked image down to the target resolution for antialiasing
+-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
+-        baked_image.scale(args.maxtex, args.maxtex)

@@ -1,7 +1,7 @@
 #!/bin/bash
-export PATH="/usr/bin:$PATH"
+export PATH="/mnt/c/Program Files/Blender Foundation/Blender 5.0/:$PATH"
 if command -v blender &> /dev/null; then
-    blender --background --python test_gltf.py
+    blender "$@"
 else
-    echo "Blender not found"
+    echo "Blender not found in path"
 fi
