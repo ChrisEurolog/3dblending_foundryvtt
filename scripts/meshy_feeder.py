@@ -4,6 +4,7 @@ import base64
 import requests
 import subprocess
 import sys
+import concurrent.futures
 from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
@@ -87,6 +88,7 @@ def main():
 
     files_processed = 0
     if os.path.exists(INPUT_FOLDER):
+        tasks = []
         for filename in os.listdir(INPUT_FOLDER):
             if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
                 print(f"\n--- Initiating Meshy generation for {filename} ---")
@@ -95,10 +97,19 @@ def main():
                 data_uri = get_base64_image(image_path)
                 task_id = create_meshy_task(data_uri)
 
-                if task_id and download_model(task_id, filename):
-                    files_processed += 1
-                    os.remove(image_path)
-                    print(f"🗑️ Removed original image: {filename}")
+                if task_id:
+                    tasks.append((task_id, filename, image_path))
+
+        if tasks:
+            print(f"\n🚀 Waiting for {len(tasks)} models to generate concurrently...")
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(tasks))) as executor:
+                futures = {executor.submit(download_model, t[0], t[1]): t[2] for t in tasks}
+                for future in concurrent.futures.as_completed(futures):
+                    image_path = futures[future]
+                    if future.result():
+                        files_processed += 1
+                        os.remove(image_path)
+                        print(f"🗑️ Removed original image: {os.path.basename(image_path)}")
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")
