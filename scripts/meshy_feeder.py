@@ -23,11 +23,10 @@ PIPELINE_SCRIPT = './scripts/main_pipeline.py'
 TARGET_POLYCOUNT = 60000
 TEXTURE_RES = "2048"
 
-# Security: Timeouts for API and file downloads to prevent hanging
+# Security: Timeouts and retry limits for API and file downloads to prevent hanging
 API_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 120
-
-# ==========================================
+MAX_RETRIES = 40  # 10 minutes (40 * 15s)
 def get_base64_image(image_path):
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
@@ -57,8 +56,10 @@ def download_model(task_id, filename):
     headers = {"Authorization": f"Bearer {MESHY_API_KEY}"}
 
     print(f"⏳ Meshy is sculpting {filename}... (Usually 1-3 mins)")
-    while True:
+    retries = 0
+    while retries < MAX_RETRIES:
         response = requests.get(url, headers=headers, timeout=API_TIMEOUT)
+        retries += 1
         status = response.json().get('status')
 
         if status == 'SUCCEEDED':
@@ -76,6 +77,9 @@ def download_model(task_id, filename):
             return False
 
         time.sleep(15)
+
+    print(f"❌ Timed out waiting for {filename} after {MAX_RETRIES} attempts.")
+    return False
 
 def main():
     os.makedirs(INPUT_FOLDER, mode=0o755, exist_ok=True)
