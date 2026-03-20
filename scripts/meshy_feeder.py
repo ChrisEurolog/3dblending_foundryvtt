@@ -27,11 +27,11 @@ TEXTURE_RES = "2048"
 API_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 120
 MAX_RETRIES = 40  # 10 minutes (40 * 15s)
-MAX_IMAGE_SIZE = 10 * 1024 * 1024  # 10 MB limit for image uploads
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB limit for image uploads
 
 def get_base64_image(image_path):
     if os.path.getsize(image_path) > MAX_IMAGE_SIZE:
-        raise ValueError(f"File exceeds the maximum allowed size of 10MB.")
+        raise ValueError(f"File exceeds the maximum allowed size of 20MB.")
 
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
