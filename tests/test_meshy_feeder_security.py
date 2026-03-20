@@ -3,20 +3,24 @@ from unittest.mock import patch, MagicMock
 import sys
 import os
 
-# Mock 'requests' before it is imported in 'scripts.meshy_feeder'
+# Mock dependencies to allow importing scripts.meshy_feeder without real dependencies
 sys.modules['requests'] = MagicMock()
+sys.modules['trimesh'] = MagicMock()
+sys.modules['xatlas'] = MagicMock()
+sys.modules['numpy'] = MagicMock()
+sys.modules['bpy'] = MagicMock()
+sys.modules['bmesh'] = MagicMock()
+sys.modules['addon_utils'] = MagicMock()
+sys.modules['PIL'] = MagicMock()
 
-# We need to mock the top-level calls in meshy_feeder before importing it
-# to avoid it trying to load real configs or resolve real paths during test discovery
-with patch('scripts.main_pipeline.get_app_paths') as mock_get_paths, \
-     patch('scripts.main_pipeline.load_config') as mock_load_config, \
-     patch('scripts.main_pipeline.resolve_path') as mock_resolve:
+# Instead of importing main_pipeline, let's mock it in sys.modules
+mock_pipeline = MagicMock()
+mock_pipeline.get_app_paths.return_value = MagicMock(base='/fake/base', scripts='/fake/scripts')
+mock_pipeline.load_config.return_value = {'meshy_api_key': 'fake_key'}
+mock_pipeline.resolve_path.return_value = '/fake/export'
+sys.modules['scripts.main_pipeline'] = mock_pipeline
 
-    mock_get_paths.return_value = MagicMock(base='/fake/base', scripts='/fake/scripts')
-    mock_load_config.return_value = {'meshy_api_key': 'fake_key'}
-    mock_resolve.return_value = '/fake/export'
-
-    import scripts.meshy_feeder as feeder
+import scripts.meshy_feeder as feeder
 
 class TestMeshyFeederSecurity(unittest.TestCase):
     @patch('requests.post')
