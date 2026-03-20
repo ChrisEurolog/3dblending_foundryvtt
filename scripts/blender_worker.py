@@ -116,6 +116,29 @@ def build_args():
 # ==========================================
 # PIPELINE EXECUTION
 # ==========================================
+def check_retopo_logic(retopo_name, harden_obj, timeout, time_func, bpy_data_objects, bpy_context):
+    """
+    Testable logic for checking the status of Quad Remesher's async execution.
+    Returns: (status, low_obj, used_decimate)
+    """
+    if retopo_name in bpy_data_objects:
+        print("✅ Quad Remesher successful!")
+        low_obj = bpy_data_objects[retopo_name]
+
+        # Cleanup the hardened object since Quad Remesher is done with it
+        bpy_data_objects.remove(harden_obj, do_unlink=True)
+
+        # Ensure the new object is the active one for the export phase
+        bpy_context.view_layer.objects.active = low_obj
+        return ('SUCCESS', low_obj, False)
+
+    if time_func() >= timeout:
+        print("❌ Quad Remesher timed out waiting for mesh.")
+        return ('TIMEOUT', None, True)
+
+    return ('WAITING', None, False)
+
+
 def finish_export(args, high_obj, low_obj, used_decimate):
     temp_img_path = None
     if not low_obj and used_decimate:
@@ -468,25 +491,21 @@ def process():
 
         def check_retopo():
             nonlocal low_obj, used_decimate
-            if retopo_name in bpy.data.objects:
-                print("✅ Quad Remesher successful!")
-                low_obj = bpy.data.objects[retopo_name]
+            status, low_obj_out, decimate_out = check_retopo_logic(
+                retopo_name, harden_obj, timeout, time.time, bpy.data.objects, bpy.context
+            )
 
-                # Cleanup the hardened object since Quad Remesher is done with it
-                bpy.data.objects.remove(harden_obj, do_unlink=True)
-
-                # Ensure the new object is the active one for the export phase
-                bpy.context.view_layer.objects.active = low_obj
-                finish_export(args, high_obj, low_obj, used_decimate=False)
+            if status == 'SUCCESS':
+                low_obj = low_obj_out
+                used_decimate = decimate_out
+                finish_export(args, high_obj, low_obj, used_decimate)
                 return None
-
-            if time.time() >= timeout:
-                print("❌ Quad Remesher timed out waiting for mesh.")
-                used_decimate = True
-                finish_export(args, high_obj, low_obj=None, used_decimate=True)
+            elif status == 'TIMEOUT':
+                used_decimate = decimate_out
+                finish_export(args, high_obj, low_obj=None, used_decimate=used_decimate)
                 return None
-
-            return 1.0 # Check again in 1 second
+            else:
+                return 1.0  # Check again in 1 second
 
         if not hasattr(bpy.app, 'timers'):
             # Fallback for mocking/testing environments without timers
