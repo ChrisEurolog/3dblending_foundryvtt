@@ -7,8 +7,6 @@ import sys
 from collections import namedtuple
 
 # Import pipeline steps directly instead of subprocesses for PyInstaller compatibility
-from scripts.extract_glb import extract_glb
-from scripts.bake_textures import unwrap_and_bake
 
 AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
 
@@ -153,17 +151,28 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     print(f"🔹 Processing: {f}")
 
-    # 1. Python Extraction Pass
-    print("  Running Extraction pass...")
+    # 1. Blender Extraction Pass
+    print("  Running Blender Extraction pass...")
     high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
+    high_poly_tex = high_poly_obj.replace(".obj", "_diffuse.png")
+
+    script_dir = app_paths.scripts
+    blender_extract = os.path.join(script_dir, "blender_extract.py")
+
+    # Decimate down to ~4x the target vertices (for example, ~80k vertices for a 20k target)
+    # This prevents Instant Meshes from choking on massive 800k+ inputs, while
+    # leaving enough geometric detail for a clean retopology.
+    target_extract_v = str(target_v * 4)
+
+    extract_cmd = [
+        blender_exe, "--background", "--python", blender_extract, "--",
+        input_path, high_poly_obj, target_extract_v
+    ]
 
     try:
-        success, high_poly_tex = extract_glb(input_path, high_poly_obj)
-        if not success:
-            print(f"❌ Extraction failed for {f}")
-            return
-    except Exception as e:
-        print(f"❌ Extraction Error on {f}: {e}")
+        subprocess.run(extract_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender Extraction Error on {f}: {e}")
         return
 
     # 2. Instant Meshes Pass
@@ -173,11 +182,17 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
         print(f"❌ Error: Instant Meshes executable not found at {instant_meshes_exe}")
         raise FileNotFoundError(f"Instant Meshes executable not found at {instant_meshes_exe}")
 
+    # Pass the pre-decimated sculpt obj to Instant Meshes to hit targets better
+    # and preserve pure quads.
+    sculpt_obj_path = high_poly_obj.replace(".obj", "_sculpt.obj")
+    if not os.path.exists(sculpt_obj_path):
+        sculpt_obj_path = high_poly_obj
+
     im_cmd = [
         instant_meshes_exe,
         "-o", low_poly_raw_obj,
         "-v", str(target_v),
-        high_poly_obj
+        sculpt_obj_path
     ]
 
     try:
@@ -187,15 +202,19 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
         print(f"❌ Instant Meshes Error on {f}: {e}")
         return
 
-    # 3. Python UV Unwrap and Bake Pass
-    print("  Running UV Unwrap and Bake pass...")
+    # 3. Blender UV Unwrap and Bake Pass
+    print("  Running Blender UV Unwrap and Bake pass...")
+    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
+
+    unwrap_cmd = [
+        blender_exe, "--background", "--python", blender_unwrap, "--",
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
+    ]
+
     try:
-        success = unwrap_and_bake(high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, xnormal_exe)
-        if not success:
-            print(f"❌ UV/Bake failed for {f}")
-            return
-    except Exception as e:
-        print(f"❌ UV/Bake Error on {f}: {e}")
+        subprocess.run(unwrap_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender UV/Bake Error on {f}: {e}")
         return
 
     # Meshopt Pass
