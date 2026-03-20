@@ -11,13 +11,13 @@ Automated processing scripts for converting Meshy AI outputs into production-rea
 
 ## 🛠️ Setup & Requirements
 
-1.  **Blender 5.0**: Ensure Blender is installed. Update the path in `axiom_config.json` if necessary.
+1.  **Blender 5.0**: Ensure Blender is installed. Copy `axiom_config.json.template` to `axiom_config.json` and update the path if necessary.
 2.  **gltfpack**: Download `gltfpack.exe` (from [meshoptimizer](https://github.com/zeux/meshoptimizer/releases)) and place it in the `tools/` folder (or update `axiom_config.json`).
 3.  **Python 3.10+**: Required for running the scripts.
 
 ## ⚙️ Configuration
 
-The pipeline is controlled by `axiom_config.json`. You can customize:
+The pipeline is controlled by `axiom_config.json`. Start by copying `axiom_config.json.template` to `axiom_config.json`. You can customize:
 -   **Paths**: Locations of executables and asset directories.
 -   **Profiles**: Define target vertex counts and texture resolutions for different use cases (`token_production`, `token_hobby`, `tile`).
 

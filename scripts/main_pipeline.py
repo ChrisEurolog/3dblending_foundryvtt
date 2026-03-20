@@ -6,6 +6,8 @@ import argparse
 import sys
 from collections import namedtuple
 
+# Import pipeline steps directly instead of subprocesses for PyInstaller compatibility
+
 AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
 
 def get_app_paths():
@@ -35,6 +37,15 @@ def load_config(base_dir):
 
     with open(config_path) as f:
         config = json.load(f)
+
+    # Validate configuration doesn't have unconfigured placeholder paths
+    if 'paths' in config:
+        for key, path in config['paths'].items():
+            if 'PATH_TO_' in path or 'YOUR_' in path:
+                print(f"❌ Error: Configuration file '{config_path}' contains unconfigured placeholders (e.g., '{path}' for '{key}').")
+                print("Please edit 'axiom_config.json' and provide actual paths to your tools and directories.")
+                return None
+
     return config
 
 def resolve_path(path, root_dir):
@@ -42,80 +53,53 @@ def resolve_path(path, root_dir):
         return path
     return os.path.normpath(os.path.join(root_dir, path))
 
-def run_pipeline():
+def parse_args():
     parser = argparse.ArgumentParser(description="ChrisEurolog 3D Asset Pipeline")
-    parser.add_argument("--mode", choices=["single", "batch"], help="Processing mode")
+    parser.add_argument("--mode", choices=["single", "batch", "meshy"], help="Processing mode")
     parser.add_argument("--profile", choices=["token_production", "token_hobby", "tile", "archive"], help="Optimization profile")
     parser.add_argument("--input", help="Input filename (for single mode)")
-    args = parser.parse_args()
+    parser.add_argument("--auto", action="store_true", help="Run without interactive prompts")
+    return parser.parse_args()
 
-    app_paths = get_app_paths()
-    config = load_config(app_paths.base)
-    if not config:
-        # Prompt user to create one or exit?
-        input("Press Enter to exit...")
-        return
+def get_processing_mode(args_mode):
+    if args_mode:
+        return args_mode
+    print("--- chriseurolog3d Pipeline ---")
+    mode_input = input("[1] Single [2] Batch [3] Meshy Generate: ").strip()
+    if mode_input == "1": return "single"
+    elif mode_input == "2": return "batch"
+    elif mode_input == "3": return "meshy"
+    return "single"
 
-    root_dir = app_paths.base
-    paths = config['paths']
+def select_profile(config_profiles, args_profile):
+    if args_profile:
+        return args_profile
 
-    # Resolve paths
-    # Blender EXE might be system path or absolute.
-    blender_exe = paths['blender_exe']
-    meshopt_exe = resolve_path(paths['meshopt_exe'], root_dir)
-    source_dir = resolve_path(paths['source_dir'], root_dir)
-    output_dir = resolve_path(paths['output_dir'], root_dir)
-    temp_dir = resolve_path(paths['temp_dir'], root_dir)
+    print("\nAvailable Profiles:")
+    profile_options = list(config_profiles.items())
 
-    # Ensure directories exist
-    for d in [output_dir, temp_dir]:
-        os.makedirs(d, exist_ok=True)
+    for idx, (name, details) in enumerate(profile_options, 1):
+        print(f"[{idx}] {name} ({details['target_v']} verts, {details['res']}px)")
 
-    if not os.path.exists(source_dir):
-         try:
-             os.makedirs(source_dir, exist_ok=True)
-         except OSError:
-             print(f"❌ Error: Source directory not found and could not be created: {source_dir}")
-             return
+    while True:
+        selection = input(f"Select Profile [1-{len(profile_options)}]: ").strip()
+        if selection.isdigit():
+            idx = int(selection) - 1
+            if 0 <= idx < len(profile_options):
+                return profile_options[idx][0]
 
-    # Determine Mode
-    mode = args.mode
-    if not mode:
-        print("--- chriseurolog3d Pipeline ---")
-        mode_input = input("[1] Single [2] Batch: ").strip()
-        mode = "single" if mode_input == "1" else "batch"
+        print("❌ Invalid selection. Please try again.")
 
-    # Determine Profile
-    profile_key = args.profile
-    if not profile_key:
-        print("\nAvailable Profiles:")
-        profile_options = list(config['profiles'].items())
-
-        for idx, (name, details) in enumerate(profile_options, 1):
-            print(f"[{idx}] {name} ({details['target_v']} verts, {details['res']}px)")
-
-        while True:
-            selection = input(f"Select Profile [1-{len(profile_options)}]: ").strip()
-            if selection.isdigit():
-                idx = int(selection) - 1
-                if 0 <= idx < len(profile_options):
-                    profile_key = profile_options[idx][0]
-                    break
-            print("❌ Invalid selection. Please try again.")
-
-    if profile_key not in config['profiles']:
-        print(f"❌ Error: Invalid profile '{profile_key}'")
-        return
-
-    profile = config['profiles'][profile_key]
-
-    # Override Vertex/Texture Prompts
-    target_v = profile['target_v']
-    max_res = profile['res']
+def confirm_settings(profile_key, profile_data, auto=False):
+    target_v = profile_data['target_v']
+    max_res = profile_data['res']
 
     print(f"\n✅ Selected: {profile_key}")
     print(f"   Target Vertices: {target_v}")
     print(f"   Max Resolution: {max_res}px")
+
+    if auto:
+        return target_v, max_res
 
     override = input("\nPress Enter to use defaults, or type 'edit' to change values: ").strip().lower()
     if override == 'edit':
@@ -131,15 +115,18 @@ def run_pipeline():
             print(f"👉 New Settings: {target_v} verts, {max_res}px")
         except ValueError:
             print("❌ Invalid number entered. Using defaults.")
-            target_v = profile['target_v']
-            max_res = profile['res']
+            target_v = profile_data['target_v']
+            max_res = profile_data['res']
 
-    # Determine Files
+    return target_v, max_res
+
+def get_files_to_process(mode, args_input, source_dir):
     files = []
     if mode == "single":
-        filename = args.input
+        filename = args_input
         if not filename:
-             filename = input("\nFilename (in source/exports/): ").strip()
+             source_folder = os.path.basename(source_dir)
+             filename = input(f"\nFilename (in {source_folder}/): ").strip()
 
         # Security Fix: Prevent path traversal by ensuring only the filename is used
         filename = os.path.basename(filename)
@@ -151,6 +138,189 @@ def run_pipeline():
     else:
         files = [f for f in os.listdir(source_dir) if f.endswith(".glb")]
 
+    return files
+
+def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
+    input_path = os.path.join(source_dir, f)
+    if not os.path.exists(input_path):
+            print(f"⚠️ Warning: File not found: {input_path}")
+            return
+
+    temp_out = os.path.join(temp_dir, f)
+    final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
+
+    print(f"🔹 Processing: {f}")
+
+    # 1. Blender Extraction Pass
+    print("  Running Blender Extraction pass...")
+    high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
+    high_poly_tex = high_poly_obj.replace(".obj", "_diffuse.png")
+
+    script_dir = app_paths.scripts
+    blender_extract = os.path.join(script_dir, "blender_extract.py")
+
+    # Decimate down to ~4x the target vertices (for example, ~80k vertices for a 20k target)
+    # This prevents Instant Meshes from choking on massive 800k+ inputs, while
+    # leaving enough geometric detail for a clean retopology.
+    target_extract_v = str(target_v * 4)
+
+    extract_cmd = [
+        blender_exe, "--background", "--python", blender_extract, "--",
+        input_path, high_poly_obj, target_extract_v
+    ]
+
+    try:
+        subprocess.run(extract_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender Extraction Error on {f}: {e}")
+        return
+
+    # 2. Instant Meshes Pass
+    print("  Running Instant Meshes pass...")
+    low_poly_raw_obj = os.path.join(temp_dir, f.replace(".glb", "_low_raw.obj"))
+    if not os.path.exists(instant_meshes_exe):
+        print(f"❌ Error: Instant Meshes executable not found at {instant_meshes_exe}")
+        raise FileNotFoundError(f"Instant Meshes executable not found at {instant_meshes_exe}")
+
+    # Pass the pre-decimated sculpt obj to Instant Meshes to hit targets better
+    # and preserve pure quads.
+    sculpt_obj_path = high_poly_obj.replace(".obj", "_sculpt.obj")
+    if not os.path.exists(sculpt_obj_path):
+        sculpt_obj_path = high_poly_obj
+
+    # Instant Meshes generates quads (2 triangles each), and UV unwrapping duplicates
+    # vertices along every seam. To hit the target vertex count in the final glTF,
+    # we must strictly limit Instant Meshes to half the requested vertices.
+    im_target = max(target_v // 2, 100)
+
+    im_cmd = [
+        instant_meshes_exe,
+        "-o", low_poly_raw_obj,
+        "-v", str(im_target),
+        sculpt_obj_path
+    ]
+
+    try:
+        # Some versions of instant meshes output to stdout/stderr, so we capture or let it flow
+        subprocess.run(im_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Instant Meshes Error on {f}: {e}")
+        return
+
+    # 3. Blender UV Unwrap and Bake Pass
+    print("  Running Blender UV Unwrap and Bake pass...")
+    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
+
+    unwrap_cmd = [
+        blender_exe, "--background", "--python", blender_unwrap, "--",
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
+    ]
+
+    try:
+        subprocess.run(unwrap_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender UV/Bake Error on {f}: {e}")
+        return
+
+    # Meshopt Pass
+    if profile_key != "archive":
+        print("  Running Meshopt pass...")
+        if not os.path.exists(gltfpack_exe):
+                print(f"⚠️ Warning: gltfpack not found at {gltfpack_exe}. Skipping optimization.")
+                shutil.copy(temp_out, final_out)
+        else:
+            # Use safer compression for Foundry VTT
+            # -si: Simplification
+            # -noq: No Quantization (this is the key for compatibility)
+            # Removed -c and -cc which cause compression issues
+            meshopt_cmd = [gltfpack_exe, "-i", temp_out, "-o", final_out, "-noq"]
+            try:
+                subprocess.run(meshopt_cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                    print(f"❌ Meshopt Error on {f}: {e}")
+                    return
+    else:
+        shutil.copy(temp_out, final_out)
+
+    # Cleanup
+    if os.path.exists(temp_out):
+        os.remove(temp_out)
+
+    print(f"✅ Success: {f} -> {final_out}")
+    archive_dest = os.path.join(archive_dir, f)
+    if os.path.exists(archive_dest):
+        os.remove(archive_dest)
+    shutil.move(input_path, archive_dest)
+
+def run_pipeline():
+    args = parse_args()
+
+    app_paths = get_app_paths()
+    config = load_config(app_paths.base)
+    if not config:
+        # Prompt user to create one or exit?
+        input("Press Enter to exit...")
+        return
+
+    root_dir = app_paths.base
+    paths = config['paths']
+
+    # Resolve paths
+    # Blender EXE might be system path or absolute.
+    blender_exe = paths['blender_exe']
+    instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
+    xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe'), root_dir)
+    gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
+    source_dir = resolve_path(paths['source_dir'], root_dir)
+    output_dir = resolve_path(paths['output_dir'], root_dir)
+    temp_dir = resolve_path(paths['temp_dir'], root_dir)
+
+    archive_dir_path = paths.get('archive_dir', os.path.join(os.path.dirname(paths['source_dir']), 'processed_archive'))
+    archive_dir = resolve_path(archive_dir_path, root_dir)
+
+    # Ensure directories exist
+    for d in [output_dir, temp_dir, archive_dir]:
+        os.makedirs(d, mode=0o755, exist_ok=True)
+
+    if not os.path.exists(source_dir):
+         try:
+             os.makedirs(source_dir, exist_ok=True)
+         except OSError:
+             print(f"❌ Error: Source directory not found and could not be created: {source_dir}")
+             return
+
+    # Determine Mode
+    mode = get_processing_mode(args.mode)
+
+    if mode == "meshy":
+        print("\n=== Meshy 3D Generation ===")
+        print("Please place your portrait images (png, jpg, jpeg) in the './assets/portraits' folder.")
+        print("WARNING: Files in the portraits folder will be REMOVED after successful generation.")
+        print("Please ensure you have your main source files backed up in a different directory.")
+        user_ready = input("Press Enter when ready to start generation, or type 'cancel' to exit: ").strip().lower()
+        if user_ready == 'cancel':
+            return
+
+        # Import and run meshy feeder
+        import scripts.meshy_feeder
+        scripts.meshy_feeder.main()
+        return
+
+    # Determine Profile
+    profile_key = select_profile(config['profiles'], args.profile)
+
+    if profile_key not in config['profiles']:
+        print(f"❌ Error: Invalid profile '{profile_key}'")
+        return
+
+    profile = config['profiles'][profile_key]
+
+    # Override Vertex/Texture Prompts
+    target_v, max_res = confirm_settings(profile_key, profile, args.auto)
+
+    # Determine Files
+    files = get_files_to_process(mode, args.input, source_dir)
+
     if not files:
         print("No files to process.")
         return
@@ -158,74 +328,12 @@ def run_pipeline():
     print(f"\n🚀 Starting processing for {len(files)} files...")
 
     for f in files:
-        input_path = os.path.join(source_dir, f)
-        if not os.path.exists(input_path):
-             print(f"⚠️ Warning: File not found: {input_path}")
-             continue
-
-        temp_out = os.path.join(temp_dir, f)
-        final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
-
-        print(f"🔹 Processing: {f}")
-
-        # Blender Pass
-        # Locate the bundled or relative blender_worker.py
-        script_dir = app_paths.scripts
-        blender_worker = os.path.join(script_dir, "blender_worker.py")
-
-        if not os.path.exists(blender_worker):
-             # Try fallback: maybe we are running script directly but get_app_paths pointed somewhere else?
-             # But if is_frozen is false, app_paths.scripts points to script dir.
-             # If is_frozen is true, sys._MEIPASS (or base_dir) should have it.
-             print(f"❌ Error: blender_worker.py not found at {blender_worker}")
+        try:
+            process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile, target_v, max_res, app_paths, profile_key, archive_dir)
+        except FileNotFoundError as e:
+             # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")
              return
-
-        blender_cmd = [
-            blender_exe, "--background", "--python", blender_worker, "--",
-            "--input", input_path,
-            "--output", temp_out,
-            "--target", str(target_v),
-            "--maxtex", str(max_res),
-            "--normalize", str(profile['norm']),
-            "--matte", str(profile['matte'])
-        ]
-
-        print("  Running Blender pass...")
-        try:
-            subprocess.run(blender_cmd, check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"❌ Blender Error on {f}: {e}")
-            continue
-        except FileNotFoundError:
-            print(f"❌ Error: Blender executable not found at {blender_exe}")
-            return
-
-        # Meshopt Pass
-        if profile_key != "archive":
-            print("  Running Meshopt pass...")
-            if not os.path.exists(meshopt_exe):
-                 print(f"⚠️ Warning: gltfpack not found at {meshopt_exe}. Skipping optimization.")
-                 shutil.copy(temp_out, final_out)
-            else:
-                # Use safer compression for Foundry VTT
-                # -si: Simplification
-                # -noq: No Quantization (this is the key for compatibility)
-                # Removed -c and -cc which cause compression issues
-                meshopt_cmd = [meshopt_exe, "-si", "0.5", "-i", temp_out, "-o", final_out, "-noq"]
-                try:
-                    subprocess.run(meshopt_cmd, check=True)
-                except subprocess.CalledProcessError as e:
-                     print(f"❌ Meshopt Error on {f}: {e}")
-                     continue
-        else:
-            shutil.copy(temp_out, final_out)
-
-        # Cleanup
-        if os.path.exists(temp_out):
-            os.remove(temp_out)
-
-        print(f"✅ Success: {f} -> {final_out}")
 
     print("Pipeline Finished.")
 
