@@ -73,7 +73,10 @@ def get_processing_mode(args_mode):
 
 def select_profile(config_profiles, args_profile):
     if args_profile:
-        return args_profile
+        if args_profile in config_profiles:
+            return args_profile
+        else:
+            print(f"❌ Error: Profile '{args_profile}' not found in config.")
 
     print("\nAvailable Profiles:")
     profile_options = list(config_profiles.items())
