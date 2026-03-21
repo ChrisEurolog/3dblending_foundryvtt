@@ -140,5 +140,25 @@ class TestBlenderWorkerSecurity(unittest.TestCase):
             bw.validate_gltf_path(filepath)
         self.assertIn("Unsafe buffer URI detected", str(cm.exception))
 
+    def test_validate_gltf_empty_file(self):
+        """Test that validate_gltf_path correctly handles an empty file."""
+        filepath = os.path.join(self.test_dir, "empty.gltf")
+        with open(filepath, 'w') as f:
+            pass # Create empty file
+
+        with self.assertRaises(ValueError) as cm:
+            bw.validate_gltf_path(filepath)
+        self.assertIn("Invalid glTF file: JSON is malformed", str(cm.exception))
+
+    def test_validate_gltf_malformed_json(self):
+        """Test that validate_gltf_path correctly handles malformed JSON."""
+        filepath = os.path.join(self.test_dir, "malformed.gltf")
+        with open(filepath, 'w') as f:
+            f.write("{ invalid json ")
+
+        with self.assertRaises(ValueError) as cm:
+            bw.validate_gltf_path(filepath)
+        self.assertIn("Invalid glTF file: JSON is malformed", str(cm.exception))
+
 if __name__ == '__main__':
     unittest.main()
