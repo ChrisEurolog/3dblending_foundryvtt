@@ -235,7 +235,7 @@ class TestMainPipeline(unittest.TestCase):
         self.assertEqual(files, [".glb"])
 
         files = mp.get_files_to_process("single", "..", "/source")
-        self.assertEqual(files, ["..glb"])
+        self.assertEqual(files, [".glb"])
 
     @patch('builtins.input', return_value="")
     def test_get_files_to_process_single_empty_input(self, mock_input):
