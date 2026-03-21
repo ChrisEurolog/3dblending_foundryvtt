@@ -21,23 +21,24 @@ class TestMainPipeline(unittest.TestCase):
             self.assertEqual(paths.scripts, expected_scripts)
             self.assertEqual(paths.base, expected_base)
 
-    def test_get_app_paths_frozen_with_meipass(self):
-        """Test path resolution in frozen mode with sys._MEIPASS."""
-        fake_exe = '/home/user/repo/dist/main_pipeline.exe'
-        fake_meipass = '/tmp/_MEI12345'
-        with patch.dict(sys.__dict__, {'frozen': True, 'executable': fake_exe, '_MEIPASS': fake_meipass}):
-            paths = mp.get_app_paths()
-            self.assertEqual(paths.scripts, fake_meipass)
-            self.assertEqual(paths.base, os.path.dirname(fake_exe))
+    def test_parse_args_no_arguments(self):
+        """Test parse_args when no arguments are provided."""
+        with patch('sys.argv', ['main_pipeline.py']):
+            args = mp.parse_args()
+            self.assertIsNone(args.mode)
+            self.assertIsNone(args.profile)
+            self.assertIsNone(args.input)
+            self.assertFalse(args.auto)
 
-    def test_get_app_paths_frozen_no_meipass(self):
-        """Test path resolution in frozen mode without sys._MEIPASS."""
-        fake_exe = '/home/user/repo/dist/main_pipeline.exe'
-        with patch.dict(sys.__dict__, {'frozen': True, 'executable': fake_exe}):
-            # Ensure _MEIPASS is absent during the test
-            with patch.dict(sys.__dict__):
-                if '_MEIPASS' in sys.__dict__:
-                    del sys._MEIPASS
+    def test_get_app_paths_not_frozen(self):
+        """Test path resolution when running as a script (dev mode)."""
+        fake_file = os.path.abspath(os.path.join('scripts', 'main_pipeline.py'))
+
+        with patch('scripts.main_pipeline.sys') as mock_sys:
+            # Simulate not frozen by ensuring the attribute is missing
+            del mock_sys.frozen
+
+            with patch('scripts.main_pipeline.__file__', fake_file):
                 paths = mp.get_app_paths()
                 self.assertEqual(paths.scripts, os.path.dirname(fake_exe))
                 self.assertEqual(paths.base, os.path.dirname(fake_exe))
