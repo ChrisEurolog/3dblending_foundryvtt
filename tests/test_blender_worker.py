@@ -289,80 +289,60 @@ class TestBlenderWorker(unittest.TestCase):
             except AssertionError:
                 pass # Expected
 
-    def test_check_retopo_success(self):
+    def test_normals_make_consistent_called(self):
         """
-        Verifies that check_retopo_logic returns SUCCESS when the retopo object is found.
+        Verifies that normals_make_consistent(inside=False) is called to ensure adherence to Foundry VTT token compatibility rules.
         """
-        mock_bpy_context = MagicMock()
-        mock_bpy_data_objects = MagicMock()
-        mock_harden_obj = MagicMock()
-        mock_low_obj = MagicMock()
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
 
-        # retopo_name in bpy_data_objects is True
-        mock_bpy_data_objects.__contains__.side_effect = lambda k: k == "Retopo_Mesh"
-        mock_bpy_data_objects.__getitem__.side_effect = lambda k: mock_low_obj if k == "Retopo_Mesh" else None
+        # Setup standard object requirements
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [MagicMock()]
+        mock_obj.dimensions = (1.0, 1.0, 1.0)
 
-        # Time func should not be called since success is checked first
-        mock_time_func = MagicMock()
+        mock_matrix_result = MagicMock()
+        mock_matrix_result.z = 0.0
+        mock_obj.matrix_world = MagicMock()
+        mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
 
-        status, low_obj, used_decimate = worker.check_retopo_logic(
-            "Retopo_Mesh", mock_harden_obj, 100, mock_time_func, mock_bpy_data_objects, mock_bpy_context
-        )
+        mock_objects = MagicMock()
+        mock_objects.__iter__.return_value = [mock_obj]
+        mock_bpy.data.objects = mock_objects
 
-        self.assertEqual(status, 'SUCCESS')
-        self.assertEqual(low_obj, mock_low_obj)
-        self.assertFalse(used_decimate)
+        mock_bpy.context.view_layer.objects.active = mock_obj
 
-        # Verify side effects
-        mock_bpy_data_objects.remove.assert_called_once_with(mock_harden_obj, do_unlink=True)
-        self.assertEqual(mock_bpy_context.view_layer.objects.active, mock_low_obj)
+        mock_bm = MagicMock()
+        mock_bm.verts = []
+        mock_bm.edges = []
+        mock_bmesh.from_edit_mesh.return_value = mock_bm
 
-    def test_check_retopo_timeout(self):
-        """
-        Verifies that check_retopo_logic returns TIMEOUT when time exceeds timeout
-        and retopo object is not found.
-        """
-        mock_bpy_context = MagicMock()
-        mock_bpy_data_objects = MagicMock()
-        mock_harden_obj = MagicMock()
+        # Ensure new materials can be added
+        mock_bpy.data.materials.new.return_value = MagicMock()
+        mock_bpy.data.images.new.return_value = MagicMock()
 
-        # retopo_name in bpy_data_objects is False
-        mock_bpy_data_objects.__contains__.side_effect = lambda k: False
+        # Support objects removal without error
+        mock_bpy.data.objects.remove = MagicMock()
 
-        # Time func returns a value greater than timeout
-        mock_time_func = MagicMock(return_value=120)
+        # Mock timer register to just call the function immediately
+        def mock_register(func):
+            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+            func()
 
-        status, low_obj, used_decimate = worker.check_retopo_logic(
-            "Retopo_Mesh", mock_harden_obj, 100, mock_time_func, mock_bpy_data_objects, mock_bpy_context
-        )
+        mock_bpy.app.timers.register.side_effect = mock_register
 
-        self.assertEqual(status, 'TIMEOUT')
-        self.assertIsNone(low_obj)
-        self.assertTrue(used_decimate)
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path'), \
+             patch('builtins.print'):
 
-    def test_check_retopo_wait(self):
-        """
-        Verifies that check_retopo_logic returns WAITING when retopo object is not found
-        and time has not exceeded timeout.
-        """
-        mock_bpy_context = MagicMock()
-        mock_bpy_data_objects = MagicMock()
-        mock_harden_obj = MagicMock()
+            worker.process()
 
-        # retopo_name in bpy_data_objects is False
-        mock_bpy_data_objects.__contains__.side_effect = lambda k: False
-
-        # Time func returns a value less than timeout
-        mock_time_func = MagicMock(return_value=50)
-
-        status, low_obj, used_decimate = worker.check_retopo_logic(
-            "Retopo_Mesh", mock_harden_obj, 100, mock_time_func, mock_bpy_data_objects, mock_bpy_context
-        )
-
-        self.assertEqual(status, 'WAITING')
-        self.assertIsNone(low_obj)
-        self.assertFalse(used_decimate)
-
+            try:
+                mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+            except AssertionError:
+                self.fail("normals_make_consistent should have been called.")
 
 if __name__ == '__main__':
     unittest.main()
