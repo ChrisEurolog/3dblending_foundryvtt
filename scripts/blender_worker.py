@@ -150,6 +150,7 @@ def resize_textures(max_res, objects=None):
 
     if objects:
         unique_images = set()
+        seen_materials = set()
         for obj in objects:
             # Check for material slots (handles both Mesh and Object link types)
             if not hasattr(obj, 'material_slots'):
@@ -157,9 +158,10 @@ def resize_textures(max_res, objects=None):
 
             for slot in obj.material_slots:
                 mat = slot.material
-                if not mat or not mat.use_nodes:
+                if not mat or not mat.use_nodes or mat in seen_materials:
                     continue
 
+                seen_materials.add(mat)
                 # Recursively traverse node tree
                 unique_images.update(get_images_from_node_tree(mat.node_tree))
 
