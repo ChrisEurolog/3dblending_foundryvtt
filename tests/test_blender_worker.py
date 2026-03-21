@@ -100,6 +100,9 @@ class TestBlenderWorker(unittest.TestCase):
         mock_objects.__iter__.return_value = [mock_obj]
         mock_bpy.data.objects = mock_objects
 
+        mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+        mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+
         # Setup active object
         mock_bpy.context.view_layer.objects.active = mock_obj
 
@@ -128,24 +131,22 @@ class TestBlenderWorker(unittest.TestCase):
         with patch.object(sys, 'argv', test_args), \
              patch('os.path.exists', return_value=True), \
              patch('scripts.blender_worker.validate_gltf_path'), \
-             patch('builtins.print'): # Suppress print output
+             patch('os.remove'), \
+             patch.dict('sys.modules', {'bmesh': mock_bmesh}), \
+             patch('builtins.print'):
+
+            # Because bmesh is imported locally in finish_export, patching `scripts.blender_worker.bmesh` does not intercept it.
+            # We must use `patch.dict(sys.modules, {'bmesh': mock_bmesh})` which is already globally active via the test file.
+            mock_bmesh.ops.remove_doubles.reset_mock()
 
             worker.process()
 
-            # The cleanup pass (which included remove_doubles and delete_loose)
-            # has been removed from blender_worker.py, so these should NOT be called.
-            # We assert they are NOT called to verify the new behavior.
-            try:
-                mock_bpy.ops.mesh.remove_doubles.assert_called()
-                self.fail("remove_doubles should not have been called, cleanup pass was removed.")
-            except AssertionError:
-                pass # Expected
+            self.assertTrue(mock_bmesh.ops.remove_doubles.called, "remove_doubles should have been called")
+            call_args = mock_bmesh.ops.remove_doubles.call_args[1]
+            self.assertEqual(call_args.get('dist'), 0.0001)
 
-            try:
-                mock_bpy.ops.mesh.delete_loose.assert_called()
-                self.fail("delete_loose should not have been called, cleanup pass was removed.")
-            except AssertionError:
-                pass # Expected
+            # Check that delete_loose is actually NOT called, as it's not part of the current logic
+            self.assertFalse(mock_bpy.ops.mesh.delete_loose.called, "delete_loose should not have been called.")
 
     def test_mattening_removes_metallic_and_fixes_roughness(self):
         """
@@ -217,6 +218,10 @@ class TestBlenderWorker(unittest.TestCase):
         mock_objects.__iter__.return_value = [mock_obj]
         mock_bpy.data.objects = mock_objects
 
+        # Important to set up objects map for check_retopo timer logic
+        mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+        mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+
         mock_bpy.context.view_layer.objects.active = mock_obj
 
         mock_bm = MagicMock()
@@ -274,6 +279,10 @@ class TestBlenderWorker(unittest.TestCase):
         mock_objects.__iter__.return_value = [mock_obj]
         mock_bpy.data.objects = mock_objects
 
+        # Important to set up objects map for check_retopo timer logic
+        mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+        mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+
         mock_bpy.context.view_layer.objects.active = mock_obj
 
         mock_bm = MagicMock()
@@ -301,17 +310,13 @@ class TestBlenderWorker(unittest.TestCase):
         with patch.object(sys, 'argv', test_args), \
              patch('os.path.exists', return_value=True), \
              patch('scripts.blender_worker.validate_gltf_path'), \
+             patch('os.remove'), \
              patch('builtins.print'):
 
             worker.process()
 
-            # The cleanup pass has been removed, so this should NOT be called.
-            # We assert it is NOT called to verify the new behavior.
-            try:
-                mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
-                self.fail("customdata_custom_splitnormals_clear should not have been called, cleanup pass was removed.")
-            except AssertionError:
-                pass # Expected
+            # Verify that custom split normals are actually cleared
+            mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
 
     def test_invalid_target_v_handling(self):
         """

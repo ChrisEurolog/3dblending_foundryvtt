@@ -132,12 +132,111 @@ def apply_decimate_fallback(args, high_obj, low_obj):
     bpy.ops.object.modifier_apply(modifier="Deci")
     return low_obj
 
-def clean_and_unwrap_geometry(low_obj):
     # 1. FIX THE FBX IMPORT DATA
     print("🔹 Cleaning Quad Remesher FBX geometry...")
     bpy.ops.object.select_all(action='DESELECT')
     low_obj.select_set(True)
     bpy.context.view_layer.objects.active = low_obj
+
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+
+    # Weld exact overlapping vertices from FBX seam splits
+    import bmesh
+    bm = bmesh.from_edit_mesh(low_obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
+    bmesh.update_edit_mesh(low_obj.data)
+
+    bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+    bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
+        # bpy.ops.mesh.normals_make_consistent(inside=False) # Omitted per user override to prevent lighting shards
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Now that normals are unlocked, this will actually smooth the surface for the bake!
+    bpy.ops.object.shade_smooth()
+
+    if not used_decimate:
+        # 2. AUTO-UV UNWRAP
+        print("🔹 Auto-Unwrapping UVs...")
+        bpy.ops.object.mode_set(mode='EDIT')
+        bpy.ops.mesh.select_all(action='SELECT')
+        # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
+        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.03)
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
+        print("🔹 Converting High-Poly materials to Emission for pure Albedo bake...")
+        for mat in high_obj.data.materials:
+            if mat and mat.use_nodes:
+                mat_nodes = mat.node_tree.nodes
+                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
+                mat_output = next((n for n in mat_nodes if n.type == 'OUTPUT_MATERIAL'), None) or mat_nodes.get("Material Output")
+
+                if mat_bsdf and mat_output:
+                    # Create emission node to bypass all PBR lighting/metallic issues during bake
+                    emit_node = mat_nodes.new('ShaderNodeEmission')
+
+                    # See if anything is connected to Base Color
+                    base_color_input = mat_bsdf.inputs.get('Base Color')
+                    if base_color_input and base_color_input.is_linked:
+                        link = base_color_input.links[0]
+                        mat.node_tree.links.new(link.from_socket, emit_node.inputs['Color'])
+                    else:
+                        emit_node.inputs['Color'].default_value = base_color_input.default_value if base_color_input else (1.0, 1.0, 1.0, 1.0)
+
+                    # Connect emission directly to output
+                    mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
+
+        # 3. HIGH-TO-LOW POLY BAKING
+        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
+        # We bake natively at the target resolution to avoid downsampling artifacts (bilinear interpolation)
+        # which can bleed unrendered background pixels into the edges of UV islands causing tearing/seams.
+        bake_res = args.maxtex
+        print(f"🔹 Baking High-Def Textures directly at ({bake_res}x{bake_res}) to avoid interpolation tearing...")
+        bpy.context.scene.render.engine = 'CYCLES'
+        bpy.context.scene.cycles.device = 'GPU'
+        bpy.context.scene.cycles.samples = 16
+
+        baked_image = bpy.data.images.new("Baked_Texture", width=bake_res, height=bake_res)
+        baked_mat = bpy.data.materials.new(name="Token_Material")
+        baked_mat.use_nodes = True
+
+        nodes = baked_mat.node_tree.nodes
+        bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
+        tex_node = nodes.new('ShaderNodeTexImage')
+        tex_node.image = baked_image
+        nodes.active = tex_node
+        tex_node.select = True
+
+        # We removed the ShaderNodeUVMap here because unconfigured UV maps break the glTF exporter.
+        # The exporter will automatically use the active UV map for the ShaderNodeTexImage.
+
+        high_obj.hide_viewport = False
+        high_obj.hide_set(False)
+
+        low_obj.data.materials.clear()
+        low_obj.data.materials.append(baked_mat)
+
+        bpy.ops.object.select_all(action='DESELECT')
+        high_obj.select_set(True)
+        low_obj.select_set(True)
+        bpy.context.view_layer.objects.active = low_obj
+
+        bpy.context.scene.render.bake.use_selected_to_active = True
+
+
+        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
+        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
+        # Set max_ray_distance to cast deep enough inward to hit recessed areas.
+        bpy.context.scene.render.bake.cage_extrusion = 0.03
+        bpy.context.scene.render.bake.max_ray_distance = 0.05
+
+        # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
+        # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
+        # actual lighting (which is zero) and output a black/grey image.
+        bpy.context.scene.render.bake.use_pass_direct = False
+        bpy.context.scene.render.bake.use_pass_indirect = False
+        bpy.context.scene.render.bake.use_pass_color = True
 
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
