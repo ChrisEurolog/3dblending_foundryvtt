@@ -3,10 +3,7 @@ import sys
 import unittest
 from unittest.mock import patch
 
-# Add scripts directory to path to import main_pipeline
-sys.path.append(os.path.abspath(os.path.dirname(__file__)))
-
-import main_pipeline
+import scripts.main_pipeline as main_pipeline
 
 class TestPathResolution(unittest.TestCase):
     def test_get_app_paths_dev(self):

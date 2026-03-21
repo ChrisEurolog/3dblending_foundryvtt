@@ -4,6 +4,7 @@ import base64
 import requests
 import subprocess
 import sys
+import urllib.parse
 from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
@@ -27,7 +28,12 @@ TEXTURE_RES = "2048"
 API_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 120
 MAX_RETRIES = 40  # 10 minutes (40 * 15s)
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB limit for image uploads
+
 def get_base64_image(image_path):
+    if os.path.getsize(image_path) > MAX_IMAGE_SIZE:
+        raise ValueError(f"File exceeds the maximum allowed size of 20MB.")
+
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
     extension = os.path.splitext(image_path)[1][1:].lower()
@@ -64,6 +70,16 @@ def download_model(task_id, filename):
 
         if status == 'SUCCEEDED':
             model_url = response.json()['model_urls']['glb']
+
+            parsed_url = urllib.parse.urlparse(model_url)
+            if parsed_url.scheme != 'https':
+                print(f"❌ Security Error: Invalid URL scheme '{parsed_url.scheme}'. Expected 'https'.")
+                return False
+
+            if not parsed_url.hostname.endswith('.meshy.ai') and parsed_url.hostname != 'meshy.ai':
+                print(f"❌ Security Error: Invalid URL host '{parsed_url.hostname}'.")
+                return False
+
             model_data = requests.get(model_url, timeout=DOWNLOAD_TIMEOUT).content
 
             output_path = os.path.join(EXPORT_DIR, f"{os.path.splitext(filename)[0]}.glb")
@@ -81,6 +97,20 @@ def download_model(task_id, filename):
     print(f"❌ Timed out waiting for {filename} after {MAX_RETRIES} attempts.")
     return False
 
+
+def _process_single_file(filename):
+    print(f"\n--- Initiating Meshy generation for {filename} ---")
+    image_path = os.path.join(INPUT_FOLDER, filename)
+
+    data_uri = get_base64_image(image_path)
+    task_id = create_meshy_task(data_uri)
+
+    if task_id and download_model(task_id, filename):
+        os.remove(image_path)
+        print(f"🗑️ Removed original image: {filename}")
+        return True
+    return False
+
 def main():
     os.makedirs(INPUT_FOLDER, mode=0o755, exist_ok=True)
     os.makedirs(EXPORT_DIR, mode=0o755, exist_ok=True)
@@ -92,13 +122,16 @@ def main():
                 print(f"\n--- Initiating Meshy generation for {filename} ---")
                 image_path = os.path.join(INPUT_FOLDER, filename)
 
-                data_uri = get_base64_image(image_path)
-                task_id = create_meshy_task(data_uri)
+                try:
+                    data_uri = get_base64_image(image_path)
+                    task_id = create_meshy_task(data_uri)
 
-                if task_id and download_model(task_id, filename):
-                    files_processed += 1
-                    os.remove(image_path)
-                    print(f"🗑️ Removed original image: {filename}")
+                    if task_id and download_model(task_id, filename):
+                        files_processed += 1
+                        os.remove(image_path)
+                        print(f"🗑️ Removed original image: {filename}")
+                except ValueError as e:
+                    print(f"❌ Skipped {filename}: {e}")
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")

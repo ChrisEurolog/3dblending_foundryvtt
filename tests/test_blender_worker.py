@@ -45,6 +45,30 @@ class TestBlenderWorker(unittest.TestCase):
             printed_error = any("Error: Input file" in str(args[0]) for args, _ in mock_print.call_args_list if args)
             self.assertTrue(printed_error, "Error message should be printed")
 
+    def test_process_missing_input_file_catches_filenotfounderror(self):
+        """
+        Verifies that process() catches FileNotFoundError from import_scene.gltf and returns gracefully.
+        """
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path', return_value=True), \
+             patch('builtins.print') as mock_print:
+
+            # Mock import_scene.gltf to raise FileNotFoundError
+            mock_bpy.ops.import_scene.gltf.side_effect = FileNotFoundError("Fake path not found")
+
+            # This should return gracefully, not raise an exception or call sys.exit
+            worker.process()
+
+            # Verify that the correct error message was printed
+            printed_error = any("❌ Import Error" in str(args[0]) for args, _ in mock_print.call_args_list if args)
+            self.assertTrue(printed_error, "Import Error message should be printed")
+
+            # Reset side_effect for other tests
+            mock_bpy.ops.import_scene.gltf.side_effect = None
+
     def test_remove_doubles_threshold(self):
         """
         Verifies that remove_doubles is called with a threshold of 0.0005 to prevent jagged artifacts from over-merging.
