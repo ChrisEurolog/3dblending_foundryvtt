@@ -167,6 +167,17 @@ class TestMainPipeline(unittest.TestCase):
         mock_print.assert_any_call(f"❌ Error: Instant Meshes executable not found at '{expected_path}'. Please check config.json.")
 
 
+    @patch('builtins.print')
+    def test_confirm_settings_auto(self, mock_print):
+        """Test confirm_settings with auto=True."""
+        profile_key = "test_profile"
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.confirm_settings(profile_key, profile_data, auto=True)
+
+        self.assertEqual(result, (1000, 1024))
+        mock_print.assert_called()
+
     @patch('scripts.main_pipeline.os.path.exists')
     @patch('scripts.main_pipeline.os.remove')
     @patch('scripts.main_pipeline.subprocess.run')
