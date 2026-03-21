@@ -35,8 +35,15 @@ def load_config(base_dir):
         print(f"❌ Error: Config file not found at {config_path}")
         return None
 
-    with open(config_path) as f:
-        config = json.load(f)
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print("⚠️ Config not found. Using defaults.")
+        return None
+    except json.JSONDecodeError:
+        print("❌ Error: Config file is not valid JSON.")
+        return None
 
     # Validate configuration doesn't have unconfigured placeholder paths
     if 'paths' in config:
@@ -73,7 +80,10 @@ def get_processing_mode(args_mode):
 
 def select_profile(config_profiles, args_profile):
     if args_profile:
-        return args_profile
+        if args_profile in config_profiles:
+            return args_profile
+        else:
+            print(f"❌ Error: Profile '{args_profile}' not found in config.")
 
     print("\nAvailable Profiles:")
     profile_options = list(config_profiles.items())
@@ -129,7 +139,11 @@ def get_files_to_process(mode, args_input, source_dir):
              filename = input(f"\nFilename (in {source_folder}/): ").strip()
 
         # Security Fix: Prevent path traversal by ensuring only the filename is used
-        filename = os.path.basename(filename)
+        filename = filename.replace('\\', '/').split('/')[-1]
+
+        if not filename or filename in ('.', '..'):
+            print("❌ Invalid filename.")
+            return []
 
         if not filename.endswith(".glb"):
             filename += ".glb"
@@ -139,6 +153,21 @@ def get_files_to_process(mode, args_input, source_dir):
         files = [f for f in os.listdir(source_dir) if f.endswith(".glb")]
 
     return files
+
+def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, xnormal_exe, target_v):
+    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
+
+    unwrap_cmd = [
+        blender_exe, "--background", "--python", blender_unwrap, "--",
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
+    ]
+
+    try:
+        subprocess.run(unwrap_cmd, check=True)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Blender UV/Bake Error on {f}: {e}")
+        return False
 
 def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshes_exe, xnormal_exe, gltfpack_exe, profile_data, target_v, max_res, app_paths, profile_key, archive_dir):
     input_path = os.path.join(source_dir, f)
@@ -203,24 +232,17 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     try:
         # Some versions of instant meshes output to stdout/stderr, so we capture or let it flow
         subprocess.run(im_cmd, check=True)
+        print("✅ Instant Meshes generated raw low poly model.")
     except subprocess.CalledProcessError as e:
-        print(f"❌ Instant Meshes Error on {f}: {e}")
-        return
+        print(f"❌ Error running Instant Meshes: {e}")
+        return False
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
-    blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
-
-    unwrap_cmd = [
-        blender_exe, "--background", "--python", blender_unwrap, "--",
-        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, xnormal_exe, str(max_res), str(target_v)
-    ]
-
-    try:
-        subprocess.run(unwrap_cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Blender UV/Bake Error on {f}: {e}")
-        return
+    bake_success = unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, xnormal_exe, target_v)
+    if not bake_success:
+        print("❌ Texture baking failed. Aborting processing for this file.")
+        return False
 
     # Meshopt Pass
     if profile_key != "archive":
@@ -271,6 +293,18 @@ def run_pipeline():
     instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
     xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe'), root_dir)
     gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
+
+    # Check for executables
+    try:
+        subprocess.run([blender_exe, "--version"], capture_output=True, check=True)
+    except OSError:
+        print(f"❌ Error: Blender executable not found at '{blender_exe}'. Please check config.json.")
+        return
+
+    if not (os.path.exists(instant_meshes_exe) or shutil.which(instant_meshes_exe)):
+        print(f"❌ Error: Instant Meshes executable not found at '{instant_meshes_exe}'. Please check config.json.")
+        return
+
     source_dir = resolve_path(paths['source_dir'], root_dir)
     output_dir = resolve_path(paths['output_dir'], root_dir)
     temp_dir = resolve_path(paths['temp_dir'], root_dir)

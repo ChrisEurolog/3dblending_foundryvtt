@@ -24,6 +24,18 @@ import scripts.meshy_feeder as feeder
 
 class TestMeshyFeederSecurity(unittest.TestCase):
     @patch('requests.post')
+    def test_create_meshy_task_error(self, mock_post):
+        """Test that create_meshy_task handles API errors gracefully and returns None."""
+        mock_post.return_value.status_code = 400
+        mock_post.return_value.text = "Bad Request: Invalid image format"
+
+        with patch('builtins.print') as mock_print:
+            result = feeder.create_meshy_task("data:image/png;base64,abc")
+
+        self.assertIsNone(result)
+        mock_print.assert_called_with("❌ Error creating task: Bad Request: Invalid image format")
+
+    @patch('requests.post')
     def test_create_meshy_task_timeout(self, mock_post):
         """Test that create_meshy_task passes the API_TIMEOUT to requests.post."""
         mock_post.return_value.status_code = 202
