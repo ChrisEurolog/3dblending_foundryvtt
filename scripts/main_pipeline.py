@@ -35,8 +35,15 @@ def load_config(base_dir):
         print(f"❌ Error: Config file not found at {config_path}")
         return None
 
-    with open(config_path) as f:
-        config = json.load(f)
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+    except FileNotFoundError:
+        print("⚠️ Config not found. Using defaults.")
+        return None
+    except json.JSONDecodeError:
+        print("❌ Error: Config file is not valid JSON.")
+        return None
 
     # Validate configuration doesn't have unconfigured placeholder paths
     if 'paths' in config:
