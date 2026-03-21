@@ -4,6 +4,7 @@ import base64
 import requests
 import subprocess
 import sys
+import concurrent.futures
 from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
@@ -81,24 +82,31 @@ def download_model(task_id, filename):
     print(f"❌ Timed out waiting for {filename} after {MAX_RETRIES} attempts.")
     return False
 
+
+def _process_single_file(filename):
+    print(f"\n--- Initiating Meshy generation for {filename} ---")
+    image_path = os.path.join(INPUT_FOLDER, filename)
+
+    data_uri = get_base64_image(image_path)
+    task_id = create_meshy_task(data_uri)
+
+    if task_id and download_model(task_id, filename):
+        os.remove(image_path)
+        print(f"🗑️ Removed original image: {filename}")
+        return True
+    return False
+
 def main():
     os.makedirs(INPUT_FOLDER, mode=0o755, exist_ok=True)
     os.makedirs(EXPORT_DIR, mode=0o755, exist_ok=True)
 
     files_processed = 0
     if os.path.exists(INPUT_FOLDER):
-        for filename in os.listdir(INPUT_FOLDER):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                print(f"\n--- Initiating Meshy generation for {filename} ---")
-                image_path = os.path.join(INPUT_FOLDER, filename)
-
-                data_uri = get_base64_image(image_path)
-                task_id = create_meshy_task(data_uri)
-
-                if task_id and download_model(task_id, filename):
-                    files_processed += 1
-                    os.remove(image_path)
-                    print(f"🗑️ Removed original image: {filename}")
+        valid_files = [f for f in os.listdir(INPUT_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if valid_files:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = executor.map(_process_single_file, valid_files)
+                files_processed = sum(results)
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")
