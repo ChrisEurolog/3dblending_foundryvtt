@@ -349,15 +349,7 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
     bpy.ops.wm.quit_blender()
 
-def process():
-    try:
-        idx = sys.argv.index("--")
-        argv = sys.argv[idx + 1:]
-    except ValueError:
-        argv = []
-
-    args = build_args().parse_args(argv)
-
+def import_high_poly(args):
     # 1. CLEAN SCENE & IMPORT HIGH-POLY
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
@@ -365,18 +357,15 @@ def process():
     if not os.path.exists(args.input):
         print(f"Error: Input file {args.input} does not exist.")
         sys.exit(1)
-        return
 
     try:
         validate_gltf_path(args.input)
     except FileNotFoundError as e:
         print(f"Error: {e}")
         sys.exit(1)
-        return
     except ValueError as e:
         print(f"Security Error: {e}")
         sys.exit(1)
-        return
 
     bpy.ops.import_scene.gltf(filepath=args.input)
 
@@ -384,7 +373,6 @@ def process():
     if not mesh_objs:
         print("❌ No mesh objects found in GLB.")
         sys.exit(1)
-        return
 
     # Join into a single High-Poly master object
     bpy.ops.object.select_all(action='DESELECT')
@@ -395,6 +383,9 @@ def process():
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
 
+    return high_obj
+
+def prepare_remesh(args, high_obj):
     # --- JULES: INSERT SURGICAL FIX HERE ---
     # Ensure HighPoly_Master has consistent normals
     bpy.ops.object.mode_set(mode='EDIT')
@@ -449,6 +440,9 @@ def process():
         mod.voxel_size = 0.005 # Detailed enough for a 1.0 unit model
         bpy.ops.object.modifier_apply(modifier="VoxelRemesh")
 
+    return harden_obj
+
+def execute_quad_remesher(args, high_obj, harden_obj):
     # 2. THE SCULPT (Quad Remesher)
     print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
     import addon_utils
@@ -537,6 +531,19 @@ def process():
         print(f"❌ Error during remeshing: {e}")
         used_decimate = True
         finish_export(args, high_obj, low_obj=None, used_decimate=True)
+
+def process():
+    try:
+        idx = sys.argv.index("--")
+        argv = sys.argv[idx + 1:]
+    except ValueError:
+        argv = []
+
+    args = build_args().parse_args(argv)
+
+    high_obj = import_high_poly(args)
+    harden_obj = prepare_remesh(args, high_obj)
+    execute_quad_remesher(args, high_obj, harden_obj)
 
 if __name__ == "__main__":
     process()
