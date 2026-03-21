@@ -28,7 +28,12 @@ TEXTURE_RES = "2048"
 API_TIMEOUT = 30
 DOWNLOAD_TIMEOUT = 120
 MAX_RETRIES = 40  # 10 minutes (40 * 15s)
+MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB limit for image uploads
+
 def get_base64_image(image_path):
+    if os.path.getsize(image_path) > MAX_IMAGE_SIZE:
+        raise ValueError(f"File exceeds the maximum allowed size of 20MB.")
+
     with open(image_path, "rb") as image_file:
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
     extension = os.path.splitext(image_path)[1][1:].lower()
@@ -102,11 +107,21 @@ def main():
 
     files_processed = 0
     if os.path.exists(INPUT_FOLDER):
-        valid_files = [f for f in os.listdir(INPUT_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
-        if valid_files:
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                results = executor.map(_process_single_file, valid_files)
-                files_processed = sum(results)
+        for filename in os.listdir(INPUT_FOLDER):
+            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                print(f"\n--- Initiating Meshy generation for {filename} ---")
+                image_path = os.path.join(INPUT_FOLDER, filename)
+
+                try:
+                    data_uri = get_base64_image(image_path)
+                    task_id = create_meshy_task(data_uri)
+
+                    if task_id and download_model(task_id, filename):
+                        files_processed += 1
+                        os.remove(image_path)
+                        print(f"🗑️ Removed original image: {filename}")
+                except ValueError as e:
+                    print(f"❌ Skipped {filename}: {e}")
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")
