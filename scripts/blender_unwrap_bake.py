@@ -121,6 +121,7 @@ def process():
         low_mesh.set("Scale", "1.000000")
         low_mesh.set("MaxRayDistanceFront", "0.500000")
         low_mesh.set("MaxRayDistanceBack", "0.500000")
+        low_mesh.set("MatchUV", "true")
 
         generation = ET.SubElement(root, "GenerateMaps")
         generation.set("Width", str(max_res))
