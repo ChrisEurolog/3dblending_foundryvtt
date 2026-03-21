@@ -178,6 +178,25 @@ class TestMainPipeline(unittest.TestCase):
         self.assertEqual(result, (1000, 1024))
         mock_print.assert_called()
 
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=["2"])
+    def test_select_profile_invalid_args_profile(self, mock_input, mock_print):
+        """Test select_profile with an invalid args_profile falls back to input."""
+        config_profiles = {
+            "token_production": {"target_v": 20000, "res": 1024},
+            "token_hobby": {"target_v": 10000, "res": 512}
+        }
+
+        # Calling with an invalid profile "invalid_profile"
+        result = mp.select_profile(config_profiles, "invalid_profile")
+
+        # It should print an error for the invalid profile
+        mock_print.assert_any_call("❌ Error: Profile 'invalid_profile' not found in config.")
+
+        # It should ask for input and we mocked it to return "2", which is "token_hobby"
+        self.assertEqual(result, "token_hobby")
+        mock_input.assert_called_once()
+
     @patch('scripts.main_pipeline.os.path.exists')
     @patch('scripts.main_pipeline.os.remove')
     @patch('scripts.main_pipeline.subprocess.run')
