@@ -367,7 +367,11 @@ def import_high_poly(args):
         print(f"Security Error: {e}")
         sys.exit(1)
 
-    bpy.ops.import_scene.gltf(filepath=args.input)
+    try:
+        bpy.ops.import_scene.gltf(filepath=args.input)
+    except FileNotFoundError as e:
+        print(f"❌ Import Error: {e}")
+        return
 
     mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
     if not mesh_objs:
