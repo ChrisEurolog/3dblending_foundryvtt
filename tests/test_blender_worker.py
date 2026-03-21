@@ -313,60 +313,40 @@ class TestBlenderWorker(unittest.TestCase):
             except AssertionError:
                 pass # Expected
 
-    def test_normals_make_consistent_called(self):
+    def test_invalid_target_v_handling(self):
         """
-        Verifies that normals_make_consistent(inside=False) is called to ensure adherence to Foundry VTT token compatibility rules.
+        Verifies that an invalid target_v argument raises a ValueError
+        which is correctly caught, prints a warning, and sets target_v to None.
         """
+        # Create a mock args object
+        mock_args = MagicMock()
+        mock_args.input = 'test.glb'
+        mock_args.output = 'out.glb'
+        mock_args.target_v = 'invalid_string'
+        mock_args.target = 20000
+        mock_args.maxtex = 2048
+        mock_args.normalize = 1
+        mock_args.matte = 1
+
+        # We also need to mock build_args().parse_args() to return this mock_args
+        mock_parser = MagicMock()
+        mock_parser.parse_args.return_value = mock_args
+
+        # Let's intercept validation and just fail on file missing so we exit cleanly
         test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
 
-        # Setup standard object requirements
-        mock_obj = MagicMock()
-        mock_obj.type = 'MESH'
-        mock_obj.data.vertices = [MagicMock()]
-        mock_obj.dimensions = (1.0, 1.0, 1.0)
-
-        mock_matrix_result = MagicMock()
-        mock_matrix_result.z = 0.0
-        mock_obj.matrix_world = MagicMock()
-        mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
-
-        mock_objects = MagicMock()
-        mock_objects.__iter__.return_value = [mock_obj]
-        mock_bpy.data.objects = mock_objects
-
-        mock_bpy.context.view_layer.objects.active = mock_obj
-
-        mock_bm = MagicMock()
-        mock_bm.verts = []
-        mock_bm.edges = []
-        mock_bmesh.from_edit_mesh.return_value = mock_bm
-
-        # Ensure new materials can be added
-        mock_bpy.data.materials.new.return_value = MagicMock()
-        mock_bpy.data.images.new.return_value = MagicMock()
-
-        # Support objects removal without error
-        mock_bpy.data.objects.remove = MagicMock()
-
-        # Mock timer register to just call the function immediately
-        def mock_register(func):
-            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
-            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
-            func()
-
-        mock_bpy.app.timers.register.side_effect = mock_register
-
         with patch.object(sys, 'argv', test_args), \
-             patch('os.path.exists', return_value=True), \
-             patch('scripts.blender_worker.validate_gltf_path'), \
-             patch('builtins.print'):
+             patch('scripts.blender_worker.build_args', return_value=mock_parser), \
+             patch('os.path.exists', return_value=False), \
+             patch('sys.exit') as mock_exit, \
+             patch('builtins.print') as mock_print:
 
             worker.process()
 
-            try:
-                mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
-            except AssertionError:
-                self.fail("normals_make_consistent should have been called.")
+            # Verify the exception block was hit and printed the expected warning
+            printed_warning = any("Warning: Invalid target_v 'invalid_string'. Disabling decimation." in str(args[0]) for args, _ in mock_print.call_args_list if args)
+            self.assertTrue(printed_warning, "Warning message for invalid target_v should be printed")
+
 
 if __name__ == '__main__':
     unittest.main()

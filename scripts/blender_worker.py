@@ -108,6 +108,7 @@ def build_args():
     p.add_argument("--input", required=True)
     p.add_argument("--output", required=True)
     p.add_argument("--target", type=int, default=20000)
+    p.add_argument("--target_v", default=None)
     p.add_argument("--maxtex", type=int, default=2048)
     p.add_argument("--normalize", type=int, default=1)
     p.add_argument("--matte", type=int, default=1)
@@ -401,7 +402,21 @@ def finish_export(args, high_obj, low_obj, used_decimate):
 
     bpy.ops.wm.quit_blender()
 
-def import_high_poly(args):
+def process():
+    try:
+        idx = sys.argv.index("--")
+        argv = sys.argv[idx + 1:]
+    except ValueError:
+        argv = []
+
+    args = build_args().parse_args(argv)
+
+    try:
+        target_v = int(args.target_v) if args.target_v else None
+    except ValueError:
+        print(f"⚠️ Warning: Invalid target_v '{args.target_v}'. Disabling decimation.")
+        target_v = None
+
     # 1. CLEAN SCENE & IMPORT HIGH-POLY
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
