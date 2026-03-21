@@ -233,10 +233,10 @@ def process():
 
     if 'Metallic' in bsdf.inputs:
         bsdf.inputs['Metallic'].default_value = 0.0
-        for link in bsdf.inputs['Metallic'].links: baked_mat.node_tree.links.remove(link)
+        for link in list(bsdf.inputs['Metallic'].links): baked_mat.node_tree.links.remove(link)
     if 'Roughness' in bsdf.inputs:
         bsdf.inputs['Roughness'].default_value = 0.8
-        for link in bsdf.inputs['Roughness'].links: baked_mat.node_tree.links.remove(link)
+        for link in list(bsdf.inputs['Roughness'].links): baked_mat.node_tree.links.remove(link)
     if 'Coat Weight' in bsdf.inputs:
         bsdf.inputs['Coat Weight'].default_value = 0.01
     elif 'Coat' in bsdf.inputs:
