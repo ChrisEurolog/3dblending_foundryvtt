@@ -210,11 +210,11 @@ def run_pipeline():
 
     # Ensure directories exist
     for d in [output_dir, temp_dir]:
-        os.makedirs(d, exist_ok=True)
+        os.makedirs(d, mode=0o755, exist_ok=True)
 
     if not os.path.exists(source_dir):
          try:
-             os.makedirs(source_dir, exist_ok=True)
+             os.makedirs(source_dir, mode=0o755, exist_ok=True)
          except OSError:
              print(f"❌ Error: Source directory not found and could not be created: {source_dir}")
              return

@@ -15,7 +15,7 @@ class TestBlenderWorkerSecurity(unittest.TestCase):
     def setUp(self):
         self.test_dir = "tests/temp_security"
         if not os.path.exists(self.test_dir):
-            os.makedirs(self.test_dir)
+            os.makedirs(self.test_dir, mode=0o755)
 
     def tearDown(self):
         # Cleanup
