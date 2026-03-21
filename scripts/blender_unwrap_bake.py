@@ -47,6 +47,12 @@ def process():
     low_obj = bpy.context.view_layer.objects.active
     low_obj.name = "LowPoly_Unwrapped"
 
+    # Ensure consistent normals
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
     # 4. UNWRAP LOW POLY
     print("🔹 Auto-Unwrapping UVs...")
     bpy.ops.object.mode_set(mode='EDIT')
