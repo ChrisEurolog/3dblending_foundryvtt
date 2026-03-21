@@ -45,6 +45,30 @@ class TestBlenderWorker(unittest.TestCase):
             printed_error = any("Error: Input file" in str(args[0]) for args, _ in mock_print.call_args_list if args)
             self.assertTrue(printed_error, "Error message should be printed")
 
+    def test_process_missing_input_file_catches_filenotfounderror(self):
+        """
+        Verifies that process() catches FileNotFoundError from import_scene.gltf and returns gracefully.
+        """
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path', return_value=True), \
+             patch('builtins.print') as mock_print:
+
+            # Mock import_scene.gltf to raise FileNotFoundError
+            mock_bpy.ops.import_scene.gltf.side_effect = FileNotFoundError("Fake path not found")
+
+            # This should return gracefully, not raise an exception or call sys.exit
+            worker.process()
+
+            # Verify that the correct error message was printed
+            printed_error = any("❌ Import Error" in str(args[0]) for args, _ in mock_print.call_args_list if args)
+            self.assertTrue(printed_error, "Import Error message should be printed")
+
+            # Reset side_effect for other tests
+            mock_bpy.ops.import_scene.gltf.side_effect = None
+
     def test_remove_doubles_threshold(self):
         """
         Verifies that remove_doubles is called with a threshold of 0.0005 to prevent jagged artifacts from over-merging.
@@ -288,6 +312,41 @@ class TestBlenderWorker(unittest.TestCase):
                 self.fail("customdata_custom_splitnormals_clear should not have been called, cleanup pass was removed.")
             except AssertionError:
                 pass # Expected
+
+    def test_invalid_target_v_handling(self):
+        """
+        Verifies that an invalid target_v argument raises a ValueError
+        which is correctly caught, prints a warning, and sets target_v to None.
+        """
+        # Create a mock args object
+        mock_args = MagicMock()
+        mock_args.input = 'test.glb'
+        mock_args.output = 'out.glb'
+        mock_args.target_v = 'invalid_string'
+        mock_args.target = 20000
+        mock_args.maxtex = 2048
+        mock_args.normalize = 1
+        mock_args.matte = 1
+
+        # We also need to mock build_args().parse_args() to return this mock_args
+        mock_parser = MagicMock()
+        mock_parser.parse_args.return_value = mock_args
+
+        # Let's intercept validation and just fail on file missing so we exit cleanly
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('scripts.blender_worker.build_args', return_value=mock_parser), \
+             patch('os.path.exists', return_value=False), \
+             patch('sys.exit') as mock_exit, \
+             patch('builtins.print') as mock_print:
+
+            worker.process()
+
+            # Verify the exception block was hit and printed the expected warning
+            printed_warning = any("Warning: Invalid target_v 'invalid_string'. Disabling decimation." in str(args[0]) for args, _ in mock_print.call_args_list if args)
+            self.assertTrue(printed_warning, "Warning message for invalid target_v should be printed")
+
 
 if __name__ == '__main__':
     unittest.main()

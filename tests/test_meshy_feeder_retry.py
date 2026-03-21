@@ -52,5 +52,17 @@ class TestMeshyFeederRetry(unittest.TestCase):
         # It should have called the API exactly MAX_RETRIES times
         self.assertEqual(mock_get.call_count, MAX_RETRIES_TEST)
 
+    @patch('requests.get')
+    def test_download_model_failed_status(self, mock_get):
+        """Test that download_model correctly handles a FAILED status."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {'status': 'FAILED'}
+        mock_get.return_value = mock_response
+
+        result = feeder.download_model("task_123", "test.png")
+
+        self.assertFalse(result, "Should return False when status is FAILED")
+        self.assertEqual(mock_get.call_count, 1, "Should only call the API once if FAILED")
+
 if __name__ == '__main__':
     unittest.main()

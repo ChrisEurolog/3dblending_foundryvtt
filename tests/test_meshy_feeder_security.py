@@ -24,6 +24,18 @@ import scripts.meshy_feeder as feeder
 
 class TestMeshyFeederSecurity(unittest.TestCase):
     @patch('requests.post')
+    def test_create_meshy_task_error(self, mock_post):
+        """Test that create_meshy_task handles API errors gracefully and returns None."""
+        mock_post.return_value.status_code = 400
+        mock_post.return_value.text = "Bad Request: Invalid image format"
+
+        with patch('builtins.print') as mock_print:
+            result = feeder.create_meshy_task("data:image/png;base64,abc")
+
+        self.assertIsNone(result)
+        mock_print.assert_called_with("❌ Error creating task: Bad Request: Invalid image format")
+
+    @patch('requests.post')
     def test_create_meshy_task_timeout(self, mock_post):
         """Test that create_meshy_task passes the API_TIMEOUT to requests.post."""
         mock_post.return_value.status_code = 202
@@ -47,7 +59,7 @@ class TestMeshyFeederSecurity(unittest.TestCase):
         mock_response_status = MagicMock()
         mock_response_status.json.return_value = {
             'status': 'SUCCEEDED',
-            'model_urls': {'glb': 'http://fake.url/model.glb'}
+            'model_urls': {'glb': 'https://assets.meshy.ai/model.glb'}
         }
 
         mock_response_download = MagicMock()
@@ -86,6 +98,62 @@ class TestMeshyFeederSecurity(unittest.TestCase):
 
         with self.assertRaises(MockTimeout):
             feeder.download_model("task_123", "test.png")
+
+    @patch('requests.get')
+    @patch('time.sleep', return_value=None)
+    def test_ssrf_https_scheme_enforcement(self, mock_sleep, mock_get):
+        """Test that download_model rejects URLs without an https scheme."""
+        mock_response_status = MagicMock()
+        mock_response_status.json.return_value = {
+            'status': 'SUCCEEDED',
+            'model_urls': {'glb': 'http://assets.meshy.ai/model.glb'}
+        }
+        mock_get.return_value = mock_response_status
+
+        result = feeder.download_model("task_123", "test.png")
+
+        self.assertFalse(result)
+        # Should only be called once (for the status check), not for the download
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    @patch('time.sleep', return_value=None)
+    def test_ssrf_host_enforcement(self, mock_sleep, mock_get):
+        """Test that download_model rejects URLs from unexpected hosts."""
+        mock_response_status = MagicMock()
+        mock_response_status.json.return_value = {
+            'status': 'SUCCEEDED',
+            'model_urls': {'glb': 'https://malicious.com/model.glb'}
+        }
+        mock_get.return_value = mock_response_status
+
+        result = feeder.download_model("task_123", "test.png")
+
+        self.assertFalse(result)
+        # Should only be called once (for the status check), not for the download
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    @patch('time.sleep', return_value=None)
+    def test_ssrf_valid_url(self, mock_sleep, mock_get):
+        """Test that download_model accepts valid URLs."""
+        mock_response_status = MagicMock()
+        mock_response_status.json.return_value = {
+            'status': 'SUCCEEDED',
+            'model_urls': {'glb': 'https://assets.meshy.ai/model.glb'}
+        }
+
+        mock_response_download = MagicMock()
+        mock_response_download.content = b"fake_data"
+
+        mock_get.side_effect = [mock_response_status, mock_response_download]
+
+        with patch('builtins.open', unittest.mock.mock_open()):
+            result = feeder.download_model("task_123", "test.png")
+
+        self.assertTrue(result)
+        self.assertEqual(mock_get.call_count, 2)
+
 
 if __name__ == '__main__':
     unittest.main()
