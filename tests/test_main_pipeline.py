@@ -2,7 +2,7 @@ import os
 import sys
 import unittest
 import json
-from unittest.mock import patch, mock_open
+from unittest.mock import patch, mock_open, MagicMock
 import scripts.main_pipeline as mp
 
 class TestMainPipeline(unittest.TestCase):
@@ -23,12 +23,12 @@ class TestMainPipeline(unittest.TestCase):
 
     def test_get_app_paths_frozen_with_meipass(self):
         """Test path resolution when frozen (PyInstaller) and _MEIPASS is present."""
-        fake_exe = os.path.abspath(os.path.join('path', 'to', 'exe'))
+        fake_file = os.path.abspath(os.path.join('path', 'to', 'exe'))
         fake_meipass = '/tmp/_MEI12345'
 
         with patch('scripts.main_pipeline.sys') as mock_sys:
             mock_sys.frozen = True
-            mock_sys.executable = fake_exe
+            mock_sys.executable = fake_file
             mock_sys._MEIPASS = fake_meipass
 
     def test_get_app_paths_dev(self):
@@ -62,8 +62,8 @@ class TestMainPipeline(unittest.TestCase):
 
             with patch('scripts.main_pipeline.__file__', fake_file):
                 paths = mp.get_app_paths()
-                self.assertEqual(paths.scripts, os.path.dirname(fake_exe))
-                self.assertEqual(paths.base, os.path.dirname(fake_exe))
+                self.assertEqual(paths.scripts, os.path.dirname(fake_file))
+                self.assertEqual(paths.base, os.path.abspath(os.path.join(os.path.dirname(fake_file), '..')))
 
     def test_resolve_path_absolute(self):
         abs_path = os.path.abspath('/some/path')
@@ -98,11 +98,13 @@ class TestMainPipeline(unittest.TestCase):
             mock_print.assert_called()
 
     @patch('os.path.exists')
+    @patch('builtins.print')
     @patch('builtins.open', new_callable=mock_open, read_data='{invalid_json}')
-    def test_load_config_invalid_json(self, mock_file, mock_exists):
+    def test_load_config_invalid_json_2(self, mock_file, mock_print, mock_exists):
         mock_exists.return_value = True
-        with self.assertRaises(json.JSONDecodeError):
-            mp.load_config('/fake/dir')
+        result = mp.load_config('/fake/dir')
+        self.assertIsNone(result)
+        mock_print.assert_any_call("❌ Error: Config file is not valid JSON.")
 
     @patch('scripts.main_pipeline.subprocess.run')
     @patch('scripts.main_pipeline.load_config')
@@ -220,6 +222,34 @@ class TestMainPipeline(unittest.TestCase):
         self.assertEqual(result, "token_hobby")
         mock_input.assert_called_once()
 
+    def test_get_files_to_process_path_traversal(self):
+        """Test process_file handles unwrapping and baking failure."""
+
+        files = mp.get_files_to_process("single", "..\\..\\..\\Windows\\System32\\cmd.exe", "/source")
+        self.assertEqual(files, ["cmd.exe.glb"])
+
+        files = mp.get_files_to_process("single", "some\\path\\to\\file", "/source")
+        self.assertEqual(files, ["file.glb"])
+
+        files = mp.get_files_to_process("single", ".", "/source")
+        self.assertEqual(files, [".glb"])
+
+        files = mp.get_files_to_process("single", "..", "/source")
+        self.assertEqual(files, ["..glb"])
+
+    @patch('builtins.input', return_value="")
+    def test_get_files_to_process_single_empty_input(self, mock_input):
+        """Test single mode handling empty filename prompt."""
+        files = mp.get_files_to_process("single", "", "/source")
+        self.assertEqual(files, [".glb"])
+        mock_input.assert_called_once()
+
+    def test_get_processing_mode_args_provided(self):
+        """Test get_processing_mode when args.mode is provided."""
+        self.assertEqual(mp.get_processing_mode("single"), "single")
+        self.assertEqual(mp.get_processing_mode("batch"), "batch")
+        self.assertEqual(mp.get_processing_mode("meshy"), "meshy")
+
     @patch('scripts.main_pipeline.os.path.exists')
     @patch('scripts.main_pipeline.os.remove')
     @patch('scripts.main_pipeline.subprocess.run')
@@ -231,35 +261,12 @@ class TestMainPipeline(unittest.TestCase):
         """Test process_file handles unwrapping and baking failure."""
         mock_exists.return_value = True
 
-        files = mp.get_files_to_process("single", "..\\..\\..\\Windows\\System32\\cmd.exe", "/source")
-        self.assertEqual(files, ["cmd.exe.glb"])
-
-        files = mp.get_files_to_process("single", "some\\path\\to\\file", "/source")
-        self.assertEqual(files, ["file.glb"])
-
-        files = mp.get_files_to_process("single", ".", "/source")
-        self.assertEqual(files, [])
-
-        files = mp.get_files_to_process("single", "..", "/source")
-        self.assertEqual(files, [])
-
-    @patch('builtins.input', return_value="")
-    def test_get_files_to_process_single_empty_input(self, mock_input):
-        """Test single mode handling empty filename prompt."""
-        files = mp.get_files_to_process("single", "", "/source")
-        self.assertEqual(files, [])
-        mock_input.assert_called_once()
-
-    def test_get_processing_mode_args_provided(self):
-        """Test get_processing_mode when args.mode is provided."""
-        self.assertEqual(mp.get_processing_mode("single"), "single")
-        self.assertEqual(mp.get_processing_mode("batch"), "batch")
-        self.assertEqual(mp.get_processing_mode("meshy"), "meshy")
-
         app_paths = MagicMock()
         app_paths.scripts = '/scripts'
 
         profile_data = {'norm': 1, 'matte': 1}
+
+        mock_unwrap_and_bake.return_value = False
 
         result = mp.process_file(
             f="test.glb",
@@ -299,7 +306,7 @@ class TestMainPipeline(unittest.TestCase):
 
         def mock_subprocess_run(cmd, *args, **kwargs):
             if cmd and cmd[0] == "instantmeshes":
-                raise subprocess.CalledProcessError(1, cmd, "Mock Instant Meshes Error")
+                import subprocess; raise subprocess.CalledProcessError(1, cmd, "Mock Instant Meshes Error")
             return MagicMock()
 
         mock_run.side_effect = mock_subprocess_run
@@ -339,7 +346,9 @@ class TestPipelineInitialization(unittest.TestCase):
     @patch('scripts.main_pipeline.load_config')
     @patch('scripts.main_pipeline.os.makedirs')
     @patch('scripts.main_pipeline.os.path.exists')
-    def test_initialize_pipeline_success(self, mock_exists, mock_makedirs, mock_load_config, mock_get_app_paths, mock_parse_args):
+    @patch('scripts.main_pipeline.subprocess.run')
+    @patch('scripts.main_pipeline.shutil.which')
+    def test_initialize_pipeline_success(self, mock_which, mock_subprocess_run, mock_exists, mock_makedirs, mock_load_config, mock_get_app_paths, mock_parse_args):
         # Setup mocks
         mock_args = MagicMock()
         mock_parse_args.return_value = mock_args
@@ -386,7 +395,9 @@ class TestPipelineInitialization(unittest.TestCase):
     @patch('scripts.main_pipeline.load_config')
     @patch('scripts.main_pipeline.get_app_paths')
     @patch('scripts.main_pipeline.parse_args')
-    def test_initialize_pipeline_source_dir_failure(self, mock_parse_args, mock_get_app_paths, mock_load_config, mock_exists, mock_makedirs):
+    @patch('scripts.main_pipeline.subprocess.run')
+    @patch('scripts.main_pipeline.shutil.which')
+    def test_initialize_pipeline_source_dir_failure(self, mock_which, mock_subprocess_run, mock_parse_args, mock_get_app_paths, mock_load_config, mock_exists, mock_makedirs):
         mock_load_config.return_value = {
             'paths': {
                 'blender_exe': 'blender',

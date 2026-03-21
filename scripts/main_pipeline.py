@@ -329,7 +329,7 @@ def initialize_pipeline():
         app_paths=app_paths,
         config=config,
         blender_exe=blender_exe,
-        meshopt_exe=meshopt_exe,
+        meshopt_exe=gltfpack_exe,
         source_dir=source_dir,
         output_dir=output_dir,
         temp_dir=temp_dir
