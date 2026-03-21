@@ -6,6 +6,9 @@ from unittest.mock import MagicMock, patch
 mock_bpy = MagicMock()
 sys.modules['bpy'] = mock_bpy
 
+mock_bmesh = MagicMock()
+sys.modules['bmesh'] = mock_bmesh
+
 import scripts.blender_unwrap_bake as be
 
 class TestBlenderUnwrapBake(unittest.TestCase):
