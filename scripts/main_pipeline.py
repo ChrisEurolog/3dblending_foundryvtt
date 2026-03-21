@@ -139,7 +139,11 @@ def get_files_to_process(mode, args_input, source_dir):
              filename = input(f"\nFilename (in {source_folder}/): ").strip()
 
         # Security Fix: Prevent path traversal by ensuring only the filename is used
-        filename = os.path.basename(filename)
+        filename = filename.replace('\\', '/').split('/')[-1]
+
+        if not filename or filename in ('.', '..'):
+            print("❌ Invalid filename.")
+            return []
 
         if not filename.endswith(".glb"):
             filename += ".glb"
