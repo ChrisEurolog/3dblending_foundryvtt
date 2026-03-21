@@ -82,34 +82,31 @@ def download_model(task_id, filename):
     print(f"❌ Timed out waiting for {filename} after {MAX_RETRIES} attempts.")
     return False
 
+
+def _process_single_file(filename):
+    print(f"\n--- Initiating Meshy generation for {filename} ---")
+    image_path = os.path.join(INPUT_FOLDER, filename)
+
+    data_uri = get_base64_image(image_path)
+    task_id = create_meshy_task(data_uri)
+
+    if task_id and download_model(task_id, filename):
+        os.remove(image_path)
+        print(f"🗑️ Removed original image: {filename}")
+        return True
+    return False
+
 def main():
     os.makedirs(INPUT_FOLDER, mode=0o755, exist_ok=True)
     os.makedirs(EXPORT_DIR, mode=0o755, exist_ok=True)
 
     files_processed = 0
     if os.path.exists(INPUT_FOLDER):
-        tasks = []
-        for filename in os.listdir(INPUT_FOLDER):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                print(f"\n--- Initiating Meshy generation for {filename} ---")
-                image_path = os.path.join(INPUT_FOLDER, filename)
-
-                data_uri = get_base64_image(image_path)
-                task_id = create_meshy_task(data_uri)
-
-                if task_id:
-                    tasks.append((task_id, filename, image_path))
-
-        if tasks:
-            print(f"\n🚀 Waiting for {len(tasks)} models to generate concurrently...")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(tasks))) as executor:
-                futures = {executor.submit(download_model, t[0], t[1]): t[2] for t in tasks}
-                for future in concurrent.futures.as_completed(futures):
-                    image_path = futures[future]
-                    if future.result():
-                        files_processed += 1
-                        os.remove(image_path)
-                        print(f"🗑️ Removed original image: {os.path.basename(image_path)}")
+        valid_files = [f for f in os.listdir(INPUT_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        if valid_files:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = executor.map(_process_single_file, valid_files)
+                files_processed = sum(results)
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")
