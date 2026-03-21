@@ -124,9 +124,16 @@ def process():
     for obj in mesh_objs:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = mesh_objs[0]
-    bpy.ops.object.join()
+    if len(mesh_objs) > 1:
+        bpy.ops.object.join()
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
+
+    # Ensure consistent normals
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
 
     # Normalize origin and scale
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
