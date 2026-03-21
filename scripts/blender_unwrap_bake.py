@@ -32,7 +32,11 @@ def process():
         sys.exit(1)
 
     # 2. IMPORT LOW POLY RAW
-    bpy.ops.wm.obj_import(filepath=low_poly_raw_obj, forward_axis='Y', up_axis='Z')
+    bpy.ops.wm.obj_import(
+        filepath=low_poly_raw_obj,
+        forward_axis='Y',
+        up_axis='Z'
+    )
 
     mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
     if not mesh_objs:
