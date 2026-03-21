@@ -7,6 +7,10 @@ import sys
 from collections import namedtuple
 
 AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
+PipelineConfig = namedtuple('PipelineConfig', [
+    'args', 'app_paths', 'config', 'blender_exe', 'meshopt_exe',
+    'source_dir', 'output_dir', 'temp_dir'
+])
 
 def get_app_paths():
     """
@@ -187,7 +191,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, 
 
     print(f"✅ Success: {f} -> {final_out}")
 
-def run_pipeline():
+def initialize_pipeline():
     args = parse_args()
 
     app_paths = get_app_paths()
@@ -195,7 +199,7 @@ def run_pipeline():
     if not config:
         # Prompt user to create one or exit?
         input("Press Enter to exit...")
-        return
+        return None
 
     root_dir = app_paths.base
     paths = config['paths']
@@ -217,25 +221,41 @@ def run_pipeline():
              os.makedirs(source_dir, exist_ok=True)
          except OSError:
              print(f"❌ Error: Source directory not found and could not be created: {source_dir}")
-             return
+             return None
+
+    return PipelineConfig(
+        args=args,
+        app_paths=app_paths,
+        config=config,
+        blender_exe=blender_exe,
+        meshopt_exe=meshopt_exe,
+        source_dir=source_dir,
+        output_dir=output_dir,
+        temp_dir=temp_dir
+    )
+
+def run_pipeline():
+    pipeline_cfg = initialize_pipeline()
+    if not pipeline_cfg:
+        return
 
     # Determine Mode
-    mode = get_processing_mode(args.mode)
+    mode = get_processing_mode(pipeline_cfg.args.mode)
 
     # Determine Profile
-    profile_key = select_profile(config['profiles'], args.profile)
+    profile_key = select_profile(pipeline_cfg.config['profiles'], pipeline_cfg.args.profile)
 
-    if profile_key not in config['profiles']:
+    if profile_key not in pipeline_cfg.config['profiles']:
         print(f"❌ Error: Invalid profile '{profile_key}'")
         return
 
-    profile = config['profiles'][profile_key]
+    profile = pipeline_cfg.config['profiles'][profile_key]
 
     # Override Vertex/Texture Prompts
     target_v, max_res = confirm_settings(profile_key, profile)
 
     # Determine Files
-    files = get_files_to_process(mode, args.input, source_dir)
+    files = get_files_to_process(mode, pipeline_cfg.args.input, pipeline_cfg.source_dir)
 
     if not files:
         print("No files to process.")
@@ -245,7 +265,19 @@ def run_pipeline():
 
     for f in files:
         try:
-            process_file(f, source_dir, temp_dir, output_dir, blender_exe, meshopt_exe, profile, target_v, max_res, app_paths, profile_key)
+            process_file(
+                f,
+                pipeline_cfg.source_dir,
+                pipeline_cfg.temp_dir,
+                pipeline_cfg.output_dir,
+                pipeline_cfg.blender_exe,
+                pipeline_cfg.meshopt_exe,
+                profile,
+                target_v,
+                max_res,
+                pipeline_cfg.app_paths,
+                profile_key
+            )
         except FileNotFoundError as e:
              # Critical error (e.g. executable not found), already printed in process_file
              input("Press Enter to exit...")
