@@ -40,5 +40,34 @@ class TestBlenderExtractLogic(unittest.TestCase):
         mock_print.assert_any_call("❌ No mesh objects found in GLB.")
         mock_exit.assert_called_once_with(1)
 
+
+    @patch('sys.exit')
+    @patch('builtins.print')
+    @patch('os.path.exists')
+    @patch('scripts.blender_extract.validate_gltf_path')
+    def test_normals_make_consistent_called(self, mock_validate, mock_exists, mock_print, mock_exit):
+        mock_exists.return_value = True
+        mock_validate.return_value = True
+
+        # Setup mock objects
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [1] * 100
+        mock_bpy.data.objects = [mock_obj]
+
+        mock_bpy.context.view_layer.objects.active = mock_obj
+
+        test_args = ['blender', '--background', '--python', 'blender_extract.py', '--', 'input.glb', 'output.obj']
+
+        # We need to stub out the save method so it doesn't crash on mocked images
+        mock_bpy.ops.wm.obj_export = MagicMock()
+        mock_bpy.ops.wm.quit_blender = MagicMock()
+
+        with patch.object(sys, 'argv', test_args):
+            with patch.dict('sys.modules', {'bmesh': MagicMock()}):
+                be.process()
+
+        mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+
 if __name__ == '__main__':
     unittest.main()
