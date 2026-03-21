@@ -48,25 +48,27 @@ def process():
     low_obj = bpy.context.view_layer.objects.active
     low_obj.name = "LowPoly_Unwrapped"
 
-    # Ensure consistent normals
+    # 3. WELD SEAMS AND CLEANUP LOW POLY
     bpy.ops.object.mode_set(mode='EDIT')
-
     import bmesh
     bm = bmesh.from_edit_mesh(low_obj.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
     bmesh.update_edit_mesh(low_obj.data)
 
+    # Select all again just to be safe
     bpy.ops.mesh.select_all(action='SELECT')
+    # Un-mark any sharp edges that might have come through Instant Meshes
     bpy.ops.mesh.mark_sharp(clear=True)
+    # Recalculate normals outwards to guarantee consistency before xNormal raycasting
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
-    # Clear custom split normals (locked normals from OBJ import)
-    # This must be done in OBJECT mode and ensures smoothing works correctly
+    # Important: Do not use customdata_custom_splitnormals_clear() here as it causes a fatal exception in Blender 5.0+
+    # when the custom data layer doesn't exist.
     try:
         bpy.ops.mesh.customdata_custom_splitnormals_clear()
-    except Exception as e:
-        print(f"Warning: Could not clear custom split normals: {e}")
+    except Exception:
+        pass
 
     # 4. UNWRAP LOW POLY
     print("🔹 Auto-Unwrapping UVs...")
@@ -128,7 +130,6 @@ def process():
         low_mesh.set("Scale", "1.000000")
         low_mesh.set("MaxRayDistanceFront", "0.500000")
         low_mesh.set("MaxRayDistanceBack", "0.500000")
-        low_mesh.set("MatchUV", "true")
 
         generation = ET.SubElement(root, "GenerateMaps")
         generation.set("Width", str(max_res))

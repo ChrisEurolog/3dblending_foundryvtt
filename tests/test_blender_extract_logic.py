@@ -40,7 +40,6 @@ class TestBlenderExtractLogic(unittest.TestCase):
         mock_print.assert_any_call("❌ No mesh objects found in GLB.")
         mock_exit.assert_called_once_with(1)
 
-
     @patch('sys.exit')
     @patch('builtins.print')
     @patch('os.path.exists')

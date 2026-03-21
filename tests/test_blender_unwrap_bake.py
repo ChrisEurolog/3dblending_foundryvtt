@@ -1,41 +1,43 @@
 import sys
 import unittest
-import os
 from unittest.mock import MagicMock, patch
 
+# Mock bpy before importing blender_unwrap_bake
 mock_bpy = MagicMock()
 sys.modules['bpy'] = mock_bpy
-
-mock_bmesh = MagicMock()
-sys.modules['bmesh'] = mock_bmesh
 
 import scripts.blender_unwrap_bake as be
 
 class TestBlenderUnwrapBake(unittest.TestCase):
     def setUp(self):
         mock_bpy.reset_mock()
+        mock_bpy.data.objects = []
 
     @patch('sys.exit')
     @patch('builtins.print')
     @patch('os.path.exists')
-    @patch('xml.etree.ElementTree.ElementTree.write')
     @patch('subprocess.run')
-    @patch('time.time', side_effect=[0, 10, 20])
-    @patch('time.sleep')
-    @patch('os.path.getsize', return_value=1024)
-    @patch('os.remove')
-    def test_normals_make_consistent_called(self, mock_remove, mock_getsize, mock_sleep, mock_time, mock_subprocess, mock_write, mock_exists, mock_print, mock_exit):
+    def test_normals_make_consistent_called(self, mock_run, mock_exists, mock_print, mock_exit):
         mock_exists.return_value = True
 
+        # Setup mock objects
         mock_obj = MagicMock()
         mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [1] * 100
         mock_bpy.data.objects = [mock_obj]
+
         mock_bpy.context.view_layer.objects.active = mock_obj
 
-        test_args = ['blender', '--background', '--python', 'blender_unwrap_bake.py', '--', 'high.obj', 'low.obj', 'high_tex.png', 'out.glb', 'xnormal.exe']
+        test_args = ['blender', '--background', '--python', 'blender_unwrap_bake.py', '--', 'high.obj', 'low.obj', 'tex.png', 'out.glb', 'xnormal.exe']
+
+        mock_bpy.ops.wm.obj_export = MagicMock()
+        mock_bpy.ops.wm.quit_blender = MagicMock()
+        mock_bpy.ops.export_scene.gltf = MagicMock()
 
         with patch.object(sys, 'argv', test_args):
-            be.process()
+            with patch.dict('sys.modules', {'bmesh': MagicMock()}):
+                with patch('os.remove'):
+                    be.process()
 
         mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
 
