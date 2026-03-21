@@ -4,6 +4,7 @@ import base64
 import requests
 import subprocess
 import sys
+import concurrent.futures
 from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
@@ -84,6 +85,20 @@ def download_model(task_id, filename):
         time.sleep(15)
 
     print(f"❌ Timed out waiting for {filename} after {MAX_RETRIES} attempts.")
+    return False
+
+
+def _process_single_file(filename):
+    print(f"\n--- Initiating Meshy generation for {filename} ---")
+    image_path = os.path.join(INPUT_FOLDER, filename)
+
+    data_uri = get_base64_image(image_path)
+    task_id = create_meshy_task(data_uri)
+
+    if task_id and download_model(task_id, filename):
+        os.remove(image_path)
+        print(f"🗑️ Removed original image: {filename}")
+        return True
     return False
 
 def main():
