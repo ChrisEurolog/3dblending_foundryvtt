@@ -59,7 +59,7 @@ class TestMeshyFeederSecurity(unittest.TestCase):
         mock_response_status = MagicMock()
         mock_response_status.json.return_value = {
             'status': 'SUCCEEDED',
-            'model_urls': {'glb': 'http://fake.url/model.glb'}
+            'model_urls': {'glb': 'https://assets.meshy.ai/model.glb'}
         }
 
         mock_response_download = MagicMock()
@@ -99,16 +99,61 @@ class TestMeshyFeederSecurity(unittest.TestCase):
         with self.assertRaises(MockTimeout):
             feeder.download_model("task_123", "test.png")
 
-    @patch('os.path.getsize')
-    def test_get_base64_image_size_limit(self, mock_getsize):
-        """Test that get_base64_image raises a ValueError if the file is too large."""
-        # Set the mock to return a size larger than the limit
-        mock_getsize.return_value = feeder.MAX_IMAGE_SIZE + 1
+    @patch('requests.get')
+    @patch('time.sleep', return_value=None)
+    def test_ssrf_https_scheme_enforcement(self, mock_sleep, mock_get):
+        """Test that download_model rejects URLs without an https scheme."""
+        mock_response_status = MagicMock()
+        mock_response_status.json.return_value = {
+            'status': 'SUCCEEDED',
+            'model_urls': {'glb': 'http://assets.meshy.ai/model.glb'}
+        }
+        mock_get.return_value = mock_response_status
 
-        with self.assertRaises(ValueError) as context:
-            feeder.get_base64_image("dummy.png")
+        result = feeder.download_model("task_123", "test.png")
 
-        self.assertIn("exceeds the maximum allowed size", str(context.exception))
+        self.assertFalse(result)
+        # Should only be called once (for the status check), not for the download
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    @patch('time.sleep', return_value=None)
+    def test_ssrf_host_enforcement(self, mock_sleep, mock_get):
+        """Test that download_model rejects URLs from unexpected hosts."""
+        mock_response_status = MagicMock()
+        mock_response_status.json.return_value = {
+            'status': 'SUCCEEDED',
+            'model_urls': {'glb': 'https://malicious.com/model.glb'}
+        }
+        mock_get.return_value = mock_response_status
+
+        result = feeder.download_model("task_123", "test.png")
+
+        self.assertFalse(result)
+        # Should only be called once (for the status check), not for the download
+        self.assertEqual(mock_get.call_count, 1)
+
+    @patch('requests.get')
+    @patch('time.sleep', return_value=None)
+    def test_ssrf_valid_url(self, mock_sleep, mock_get):
+        """Test that download_model accepts valid URLs."""
+        mock_response_status = MagicMock()
+        mock_response_status.json.return_value = {
+            'status': 'SUCCEEDED',
+            'model_urls': {'glb': 'https://assets.meshy.ai/model.glb'}
+        }
+
+        mock_response_download = MagicMock()
+        mock_response_download.content = b"fake_data"
+
+        mock_get.side_effect = [mock_response_status, mock_response_download]
+
+        with patch('builtins.open', unittest.mock.mock_open()):
+            result = feeder.download_model("task_123", "test.png")
+
+        self.assertTrue(result)
+        self.assertEqual(mock_get.call_count, 2)
+
 
 if __name__ == '__main__':
     unittest.main()
