@@ -45,6 +45,30 @@ class TestBlenderWorker(unittest.TestCase):
             printed_error = any("Error: Input file" in str(args[0]) for args, _ in mock_print.call_args_list if args)
             self.assertTrue(printed_error, "Error message should be printed")
 
+    def test_process_missing_input_file_catches_filenotfounderror(self):
+        """
+        Verifies that process() catches FileNotFoundError from import_scene.gltf and returns gracefully.
+        """
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path', return_value=True), \
+             patch('builtins.print') as mock_print:
+
+            # Mock import_scene.gltf to raise FileNotFoundError
+            mock_bpy.ops.import_scene.gltf.side_effect = FileNotFoundError("Fake path not found")
+
+            # This should return gracefully, not raise an exception or call sys.exit
+            worker.process()
+
+            # Verify that the correct error message was printed
+            printed_error = any("❌ Import Error" in str(args[0]) for args, _ in mock_print.call_args_list if args)
+            self.assertTrue(printed_error, "Import Error message should be printed")
+
+            # Reset side_effect for other tests
+            mock_bpy.ops.import_scene.gltf.side_effect = None
+
     def test_remove_doubles_threshold(self):
         """
         Verifies that remove_doubles is called with a threshold of 0.0005 to prevent jagged artifacts from over-merging.
@@ -288,6 +312,61 @@ class TestBlenderWorker(unittest.TestCase):
                 self.fail("customdata_custom_splitnormals_clear should not have been called, cleanup pass was removed.")
             except AssertionError:
                 pass # Expected
+
+    def test_normals_make_consistent_called(self):
+        """
+        Verifies that normals_make_consistent(inside=False) is called to ensure adherence to Foundry VTT token compatibility rules.
+        """
+        test_args = ['blender', '--background', '--python', 'script.py', '--', '--input', 'test.glb', '--output', 'out.glb']
+
+        # Setup standard object requirements
+        mock_obj = MagicMock()
+        mock_obj.type = 'MESH'
+        mock_obj.data.vertices = [MagicMock()]
+        mock_obj.dimensions = (1.0, 1.0, 1.0)
+
+        mock_matrix_result = MagicMock()
+        mock_matrix_result.z = 0.0
+        mock_obj.matrix_world = MagicMock()
+        mock_obj.matrix_world.__matmul__.return_value = mock_matrix_result
+
+        mock_objects = MagicMock()
+        mock_objects.__iter__.return_value = [mock_obj]
+        mock_bpy.data.objects = mock_objects
+
+        mock_bpy.context.view_layer.objects.active = mock_obj
+
+        mock_bm = MagicMock()
+        mock_bm.verts = []
+        mock_bm.edges = []
+        mock_bmesh.from_edit_mesh.return_value = mock_bm
+
+        # Ensure new materials can be added
+        mock_bpy.data.materials.new.return_value = MagicMock()
+        mock_bpy.data.images.new.return_value = MagicMock()
+
+        # Support objects removal without error
+        mock_bpy.data.objects.remove = MagicMock()
+
+        # Mock timer register to just call the function immediately
+        def mock_register(func):
+            mock_bpy.data.objects.__contains__.side_effect = lambda k: True
+            mock_bpy.data.objects.__getitem__.side_effect = lambda k: mock_obj
+            func()
+
+        mock_bpy.app.timers.register.side_effect = mock_register
+
+        with patch.object(sys, 'argv', test_args), \
+             patch('os.path.exists', return_value=True), \
+             patch('scripts.blender_worker.validate_gltf_path'), \
+             patch('builtins.print'):
+
+            worker.process()
+
+            try:
+                mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+            except AssertionError:
+                self.fail("normals_make_consistent should have been called.")
 
 if __name__ == '__main__':
     unittest.main()
