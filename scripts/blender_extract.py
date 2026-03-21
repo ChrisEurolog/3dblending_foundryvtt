@@ -124,7 +124,8 @@ def process():
     for obj in mesh_objs:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = mesh_objs[0]
-    bpy.ops.object.join()
+    if len(mesh_objs) > 1:
+        bpy.ops.object.join()
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
 
