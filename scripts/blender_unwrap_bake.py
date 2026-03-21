@@ -32,7 +32,7 @@ def process():
         sys.exit(1)
 
     # 2. IMPORT LOW POLY RAW
-    bpy.ops.wm.obj_import(filepath=low_poly_raw_obj)
+    bpy.ops.wm.obj_import(filepath=low_poly_raw_obj, forward_axis='Y', up_axis='Z')
 
     mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
     if not mesh_objs:
@@ -93,7 +93,9 @@ def process():
         export_materials=False,
         apply_modifiers=True,
         export_normals=True,
-        export_uv=True
+        export_uv=True,
+        forward_axis='Y',
+        up_axis='Z'
     )
     print(f"✅ Exported unwrapped low-poly OBJ to {temp_unwrapped_obj}")
 
