@@ -306,10 +306,10 @@ def finish_export(args, high_obj, low_obj, used_decimate):
                 if mat_bsdf:
                     if 'Metallic' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Metallic'].default_value = 0.0
-                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
+                        for link in list(mat_bsdf.inputs['Metallic'].links): mat.node_tree.links.remove(link)
                     if 'Roughness' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Roughness'].default_value = 0.8
-                        for link in mat_bsdf.inputs['Roughness'].links: mat.node_tree.links.remove(link)
+                        for link in list(mat_bsdf.inputs['Roughness'].links): mat.node_tree.links.remove(link)
                     if 'Coat Weight' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Coat Weight'].default_value = 0.01
                     elif 'Coat' in mat_bsdf.inputs:
