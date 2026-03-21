@@ -11,7 +11,8 @@ from collections import namedtuple
 AppPaths = namedtuple('AppPaths', ['base', 'scripts'])
 PipelineConfig = namedtuple('PipelineConfig', [
     'args', 'app_paths', 'config', 'blender_exe', 'meshopt_exe',
-    'source_dir', 'output_dir', 'temp_dir'
+    'source_dir', 'output_dir', 'temp_dir', 'instant_meshes_exe',
+    'xnormal_exe', 'archive_dir'
 ])
 
 def get_app_paths():
@@ -145,6 +146,8 @@ def get_files_to_process(mode, args_input, source_dir):
         # Security Fix: Prevent path traversal by ensuring only the filename is used
         # Handle both forward and backward slashes by normalizing to forward slashes first
         filename = os.path.basename(filename.replace('\\', '/'))
+        if filename in (".", ".."):
+            filename = ""
 
         if not filename.endswith(".glb"):
             filename += ".glb"
@@ -332,7 +335,10 @@ def initialize_pipeline():
         meshopt_exe=gltfpack_exe,
         source_dir=source_dir,
         output_dir=output_dir,
-        temp_dir=temp_dir
+        temp_dir=temp_dir,
+        instant_meshes_exe=instant_meshes_exe,
+        xnormal_exe=xnormal_exe,
+        archive_dir=archive_dir
     )
 
 def run_pipeline():
@@ -367,7 +373,7 @@ def run_pipeline():
     profile = pipeline_cfg.config['profiles'][profile_key]
 
     # Override Vertex/Texture Prompts
-    target_v, max_res = confirm_settings(profile_key, profile, args.auto)
+    target_v, max_res = confirm_settings(profile_key, profile, pipeline_cfg.args.auto)
 
     # Determine Files
     files = get_files_to_process(mode, pipeline_cfg.args.input, pipeline_cfg.source_dir)
@@ -386,12 +392,15 @@ def run_pipeline():
                 pipeline_cfg.temp_dir,
                 pipeline_cfg.output_dir,
                 pipeline_cfg.blender_exe,
+                pipeline_cfg.instant_meshes_exe,
+                pipeline_cfg.xnormal_exe,
                 pipeline_cfg.meshopt_exe,
                 profile,
                 target_v,
                 max_res,
                 pipeline_cfg.app_paths,
-                profile_key
+                profile_key,
+                pipeline_cfg.archive_dir
             )
         except FileNotFoundError as e:
              # Critical error (e.g. executable not found), already printed in process_file
