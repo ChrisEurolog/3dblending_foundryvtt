@@ -190,7 +190,9 @@ def process():
         export_materials=False,
         apply_modifiers=True,
         export_normals=True,
-        export_uv=True
+        export_uv=True,
+        forward_axis='Y',
+        up_axis='Z'
     )
     print(f"✅ Exported high-poly OBJ to {output_obj}")
 
@@ -214,7 +216,9 @@ def process():
         export_materials=False,
         apply_modifiers=True,
         export_normals=True,
-        export_uv=False # UVs not needed for sculpt retopology
+        export_uv=False, # UVs not needed for sculpt retopology
+        forward_axis='Y',
+        up_axis='Z'
     )
     print(f"✅ Exported decimated sculpt OBJ to {sculpt_obj_path}")
 
