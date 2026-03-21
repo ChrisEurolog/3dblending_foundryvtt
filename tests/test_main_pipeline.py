@@ -214,5 +214,47 @@ class TestMainPipeline(unittest.TestCase):
         # Because unwrap and bake failed, move should NOT be called
         mock_move.assert_not_called()
 
+    @patch('scripts.main_pipeline.os.path.exists')
+    @patch('scripts.main_pipeline.subprocess.run')
+    @patch('builtins.print')
+    def test_process_file_instant_meshes_failure(self, mock_print, mock_run, mock_exists):
+        """Test process_file returns False and logs error when Instant Meshes fails."""
+        mock_exists.return_value = True
+
+        def mock_subprocess_run(cmd, *args, **kwargs):
+            if cmd and cmd[0] == "instantmeshes":
+                raise subprocess.CalledProcessError(1, cmd, "Mock Instant Meshes Error")
+            return MagicMock()
+
+        mock_run.side_effect = mock_subprocess_run
+
+        app_paths = MagicMock()
+        app_paths.scripts = '/scripts'
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.process_file(
+            f="test.glb",
+            source_dir="/source",
+            temp_dir="/temp",
+            output_dir="/output",
+            blender_exe="blender",
+            instant_meshes_exe="instantmeshes",
+            xnormal_exe="xnormal",
+            gltfpack_exe="gltfpack",
+            profile_data=profile_data,
+            target_v=1000,
+            max_res=1024,
+            app_paths=app_paths,
+            profile_key="token_production",
+            archive_dir="/archive"
+        )
+
+        self.assertFalse(result)
+
+        # Verify the specific error message was printed
+        error_msg_found = any("❌ Error running Instant Meshes:" in call_args[0][0] for call_args in mock_print.call_args_list)
+        self.assertTrue(error_msg_found, "Expected Instant Meshes error message was not printed.")
+
+
 if __name__ == '__main__':
     unittest.main()
