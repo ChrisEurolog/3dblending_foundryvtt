@@ -76,7 +76,7 @@ def validate_gltf_path(filepath):
              with open(filepath, 'r', encoding='utf-8') as f:
                 try:
                     data = json.load(f)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, EOFError):
                     raise ValueError("Invalid glTF file: JSON is malformed")
         else:
              return True
@@ -287,10 +287,10 @@ def apply_matte_and_align(args, high_obj, low_obj):
                 if mat_bsdf:
                     if 'Metallic' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Metallic'].default_value = 0.0
-                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
+                        for link in list(mat_bsdf.inputs['Metallic'].links): mat.node_tree.links.remove(link)
                     if 'Roughness' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Roughness'].default_value = 0.8
-                        for link in mat_bsdf.inputs['Roughness'].links: mat.node_tree.links.remove(link)
+                        for link in list(mat_bsdf.inputs['Roughness'].links): mat.node_tree.links.remove(link)
                     if 'Coat Weight' in mat_bsdf.inputs:
                         mat_bsdf.inputs['Coat Weight'].default_value = 0.01
                     elif 'Coat' in mat_bsdf.inputs:
@@ -396,6 +396,12 @@ def process():
     high_obj.name = "HighPoly_Master"
 
     # --- JULES: INSERT SURGICAL FIX HERE ---
+    # Ensure HighPoly_Master has consistent normals
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
     if args.normalize == 1:
         # Center the origin and normalize to exactly 1.0 unit
         bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
@@ -487,25 +493,21 @@ def process():
 
         def check_retopo():
             nonlocal low_obj, used_decimate
-            if retopo_name in bpy.data.objects:
-                print("✅ Quad Remesher successful!")
-                low_obj = bpy.data.objects[retopo_name]
+            status, low_obj_out, decimate_out = check_retopo_logic(
+                retopo_name, harden_obj, timeout, time.time, bpy.data.objects, bpy.context
+            )
 
-                # Cleanup the hardened object since Quad Remesher is done with it
-                bpy.data.objects.remove(harden_obj, do_unlink=True)
-
-                # Ensure the new object is the active one for the export phase
-                bpy.context.view_layer.objects.active = low_obj
-                finish_export(args, high_obj, low_obj, used_decimate=False)
+            if status == 'SUCCESS':
+                low_obj = low_obj_out
+                used_decimate = decimate_out
+                finish_export(args, high_obj, low_obj, used_decimate)
                 return None
-
-            if time.time() >= timeout:
-                print("❌ Quad Remesher timed out waiting for mesh.")
-                used_decimate = True
-                finish_export(args, high_obj, low_obj=None, used_decimate=True)
+            elif status == 'TIMEOUT':
+                used_decimate = decimate_out
+                finish_export(args, high_obj, low_obj=None, used_decimate=used_decimate)
                 return None
-
-            return 1.0 # Check again in 1 second
+            else:
+                return 1.0  # Check again in 1 second
 
         if not hasattr(bpy.app, 'timers'):
             # Fallback for mocking/testing environments without timers
