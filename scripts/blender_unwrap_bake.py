@@ -61,6 +61,13 @@ def process():
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
+    # Clear custom split normals (locked normals from OBJ import)
+    # This must be done in OBJECT mode and ensures smoothing works correctly
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except Exception as e:
+        print(f"Warning: Could not clear custom split normals: {e}")
+
     # 4. UNWRAP LOW POLY
     print("🔹 Auto-Unwrapping UVs...")
     bpy.ops.object.mode_set(mode='EDIT')

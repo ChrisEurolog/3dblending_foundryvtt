@@ -211,6 +211,17 @@ def process():
     # Decimate the high-poly mesh down to the target vertices before passing to Instant Meshes
     # This prevents Instant Meshes from choking on 800k+ vertex inputs and failing to hit the target,
     # while leaving the original 800k mesh untouched on disk for xNormal to bake from.
+
+    # We MUST weld vertices before decimating! GLBs split vertices at every UV seam.
+    # If we apply the Decimate modifier without welding first, it rips the mesh apart into a shattered polygon soup.
+    # Since we already exported the pristine _high.obj for xNormal in step 4, it is now safe to destructively edit high_obj.
+    bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    bm = bmesh.from_edit_mesh(high_obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+    bmesh.update_edit_mesh(high_obj.data)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
     verts_len = max(len(high_obj.data.vertices), 1)
     if verts_len > target_verts:
         print(f"🔹 Decimating sculpt mesh from {verts_len} down to {target_verts} for Instant Meshes processing...")

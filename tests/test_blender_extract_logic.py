@@ -64,7 +64,8 @@ class TestBlenderExtractLogic(unittest.TestCase):
         mock_bpy.ops.wm.quit_blender = MagicMock()
 
         with patch.object(sys, 'argv', test_args):
-            be.process()
+            with patch.dict('sys.modules', {'bmesh': MagicMock()}):
+                be.process()
 
         mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
 
