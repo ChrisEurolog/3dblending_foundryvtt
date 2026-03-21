@@ -50,5 +50,35 @@ class TestMainPipelineSecurity(unittest.TestCase):
         expected_filename = "malicious.glb"
         self.assertEqual(files, [expected_filename])
 
+    @patch('builtins.print')
+    def test_get_files_to_process_dangerous_dot(self, mock_print):
+        """Test that get_files_to_process rejects '.' as a filename."""
+        # Setup
+        mode = "single"
+        args_input = "."
+        source_dir = "/tmp/source"
+
+        # Execute
+        files = mp.get_files_to_process(mode, args_input, source_dir)
+
+        # Assert
+        self.assertEqual(files, [])
+        mock_print.assert_called_with("❌ Error: Invalid filename. Path traversal or empty input detected.")
+
+    @patch('builtins.print')
+    def test_get_files_to_process_dangerous_dot_dot(self, mock_print):
+        """Test that get_files_to_process rejects '..' as a filename."""
+        # Setup
+        mode = "single"
+        args_input = ".."
+        source_dir = "/tmp/source"
+
+        # Execute
+        files = mp.get_files_to_process(mode, args_input, source_dir)
+
+        # Assert
+        self.assertEqual(files, [])
+        mock_print.assert_called_with("❌ Error: Invalid filename. Path traversal or empty input detected.")
+
 if __name__ == '__main__':
     unittest.main()
