@@ -403,5 +403,26 @@ class TestPipelineInitialization(unittest.TestCase):
         cfg = mp.initialize_pipeline()
         self.assertIsNone(cfg)
 
+    def test_resolve_path(self):
+        """Test the resolve_path utility function."""
+        root = "/base/dir" if os.name != 'nt' else "C:\\base\\dir"
+
+        # Test absolute path
+        abs_path = "/abs/path" if os.name != 'nt' else "C:\\abs\\path"
+        self.assertEqual(mp.resolve_path(abs_path, root), abs_path)
+
+        # Test relative path
+        rel_path = "subdir/file.txt"
+        expected = os.path.normpath(os.path.join(root, rel_path))
+        self.assertEqual(mp.resolve_path(rel_path, root), expected)
+
+        # Test path with ..
+        rel_path_with_dots = "../outside/file.txt"
+        expected = os.path.normpath(os.path.join(root, rel_path_with_dots))
+        self.assertEqual(mp.resolve_path(rel_path_with_dots, root), expected)
+
+        # Test current directory
+        self.assertEqual(mp.resolve_path(".", root), os.path.normpath(root))
+
 if __name__ == '__main__':
     unittest.main()
