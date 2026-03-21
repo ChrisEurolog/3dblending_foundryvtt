@@ -132,30 +132,30 @@ def finish_export(args, high_obj, low_obj, used_decimate):
         bpy.context.view_layer.objects.active = low_obj
         bpy.ops.object.modifier_apply(modifier="Deci")
 
+    # 1. FIX THE FBX IMPORT DATA
+    print("🔹 Cleaning Quad Remesher FBX geometry...")
+    bpy.ops.object.select_all(action='DESELECT')
+    low_obj.select_set(True)
+    bpy.context.view_layer.objects.active = low_obj
+
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+
+    # Weld exact overlapping vertices from FBX seam splits
+    import bmesh
+    bm = bmesh.from_edit_mesh(low_obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
+    bmesh.update_edit_mesh(low_obj.data)
+
+    bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
+    bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
+        # bpy.ops.mesh.normals_make_consistent(inside=False) # Omitted per user override to prevent lighting shards
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Now that normals are unlocked, this will actually smooth the surface for the bake!
+    bpy.ops.object.shade_smooth()
+
     if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA
-        print("🔹 Cleaning Quad Remesher FBX geometry...")
-        bpy.ops.object.select_all(action='DESELECT')
-        low_obj.select_set(True)
-        bpy.context.view_layer.objects.active = low_obj
-
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-
-        # Weld exact overlapping vertices from FBX seam splits
-        import bmesh
-        bm = bmesh.from_edit_mesh(low_obj.data)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
-        bmesh.update_edit_mesh(low_obj.data)
-
-        bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
-        bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-            # bpy.ops.mesh.normals_make_consistent(inside=False) # Omitted per user override to prevent lighting shards
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # Now that normals are unlocked, this will actually smooth the surface for the bake!
-        bpy.ops.object.shade_smooth()
-
         # 2. AUTO-UV UNWRAP
         print("🔹 Auto-Unwrapping UVs...")
         bpy.ops.object.mode_set(mode='EDIT')
