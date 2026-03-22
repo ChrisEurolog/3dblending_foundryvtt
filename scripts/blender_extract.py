@@ -152,6 +152,9 @@ def process():
     except Exception:
         pass
 
+    # Smooth normals
+    bpy.ops.object.shade_smooth()
+
     # Normalize origin and scale
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
     high_obj.location = (0, 0, 0)
