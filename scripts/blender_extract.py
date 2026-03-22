@@ -124,9 +124,24 @@ def process():
     for obj in mesh_objs:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = mesh_objs[0]
-    bpy.ops.object.join()
+    if len(mesh_objs) > 1:
+        bpy.ops.object.join()
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
+
+    # We MUST weld vertices! GLBs split vertices at every UV seam.
+    # If we don't weld first, decimation will rip the mesh into a shattered polygon soup,
+    # and recalculating normals on an unwelded mesh will cause erratic, flipped normal bakes.
+    bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    bm = bmesh.from_edit_mesh(high_obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+    bmesh.update_edit_mesh(high_obj.data)
+
+    # Ensure consistent normals
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
 
     # Normalize origin and scale
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
@@ -140,7 +155,18 @@ def process():
             scale_factor = 1.0 / max_dim
             high_obj.scale = (scale_factor, scale_factor, scale_factor)
 
+    # Make sure we select the object and set it active before applying transforms
+    # Sometimes joining or origin sets might mess up selection context
+    bpy.ops.object.select_all(action='DESELECT')
+    high_obj.select_set(True)
+    bpy.context.view_layer.objects.active = high_obj
+
+    # Force apply all transformations (Location, Rotation, Scale) to the mesh data
+    # This prevents the 90 degree X rotation from Meshy GLBs from being interpreted incorrectly later
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    # Force an update of the view layer to ensure transforms are locked
+    bpy.context.view_layer.update()
 
     # 3. EXPORT TEXTURE
     # Find the base color texture to extract
@@ -183,7 +209,9 @@ def process():
         export_materials=False,
         apply_modifiers=True,
         export_normals=True,
-        export_uv=True
+        export_uv=True,
+        forward_axis='Y',
+        up_axis='Z'
     )
     print(f"✅ Exported high-poly OBJ to {output_obj}")
 
@@ -191,6 +219,7 @@ def process():
     # Decimate the high-poly mesh down to the target vertices before passing to Instant Meshes
     # This prevents Instant Meshes from choking on 800k+ vertex inputs and failing to hit the target,
     # while leaving the original 800k mesh untouched on disk for xNormal to bake from.
+
     verts_len = max(len(high_obj.data.vertices), 1)
     if verts_len > target_verts:
         print(f"🔹 Decimating sculpt mesh from {verts_len} down to {target_verts} for Instant Meshes processing...")
@@ -198,6 +227,15 @@ def process():
         mod.ratio = max(target_verts / verts_len, 0.05)
         mod.use_collapse_triangulate = True
         bpy.ops.object.modifier_apply(modifier="Deci")
+
+        # Repair fractured geometry caused by decimation
+        bpy.ops.object.mode_set(mode='EDIT')
+        bm = bmesh.from_edit_mesh(high_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        bmesh.update_edit_mesh(high_obj.data)
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode='OBJECT')
 
     sculpt_obj_path = output_obj.replace(".obj", "_sculpt.obj")
 
@@ -207,7 +245,9 @@ def process():
         export_materials=False,
         apply_modifiers=True,
         export_normals=True,
-        export_uv=False # UVs not needed for sculpt retopology
+        export_uv=False, # UVs not needed for sculpt retopology
+        forward_axis='Y',
+        up_axis='Z'
     )
     print(f"✅ Exported decimated sculpt OBJ to {sculpt_obj_path}")
 
