@@ -228,6 +228,15 @@ def process():
         mod.use_collapse_triangulate = True
         bpy.ops.object.modifier_apply(modifier="Deci")
 
+        # Repair fractured geometry caused by decimation
+        bpy.ops.object.mode_set(mode='EDIT')
+        bm = bmesh.from_edit_mesh(high_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        bmesh.update_edit_mesh(high_obj.data)
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode='OBJECT')
+
     sculpt_obj_path = output_obj.replace(".obj", "_sculpt.obj")
 
     bpy.ops.wm.obj_export(
