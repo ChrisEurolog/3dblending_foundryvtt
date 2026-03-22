@@ -32,7 +32,11 @@ def process():
         sys.exit(1)
 
     # 2. IMPORT LOW POLY RAW
-    bpy.ops.wm.obj_import(filepath=low_poly_raw_obj)
+    bpy.ops.wm.obj_import(
+        filepath=low_poly_raw_obj,
+        forward_axis='Y',
+        up_axis='Z'
+    )
 
     mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
     if not mesh_objs:
@@ -43,9 +47,32 @@ def process():
     for obj in mesh_objs:
         obj.select_set(True)
     bpy.context.view_layer.objects.active = mesh_objs[0]
-    bpy.ops.object.join()
+    if len(mesh_objs) > 1:
+        bpy.ops.object.join()
     low_obj = bpy.context.view_layer.objects.active
     low_obj.name = "LowPoly_Unwrapped"
+
+    # 3. WELD SEAMS AND CLEANUP LOW POLY
+    bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    bm = bmesh.from_edit_mesh(low_obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+    bmesh.update_edit_mesh(low_obj.data)
+
+    # Select all again just to be safe
+    bpy.ops.mesh.select_all(action='SELECT')
+    # Un-mark any sharp edges that might have come through Instant Meshes
+    bpy.ops.mesh.mark_sharp(clear=True)
+    # Recalculate normals outwards to guarantee consistency before xNormal raycasting
+    bpy.ops.mesh.normals_make_consistent(inside=False)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # Important: Do not use customdata_custom_splitnormals_clear() here as it causes a fatal exception in Blender 5.0+
+    # when the custom data layer doesn't exist.
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except Exception:
+        pass
 
     # 4. UNWRAP LOW POLY
     print("🔹 Auto-Unwrapping UVs...")
@@ -70,7 +97,9 @@ def process():
         export_materials=False,
         apply_modifiers=True,
         export_normals=True,
-        export_uv=True
+        export_uv=True,
+        forward_axis='Y',
+        up_axis='Z'
     )
     print(f"✅ Exported unwrapped low-poly OBJ to {temp_unwrapped_obj}")
 
@@ -97,15 +126,14 @@ def process():
         high_mesh.set("Scale", "1.000000")
         high_mesh.set("IgnorePerVertexColor", "true")
         if high_poly_tex and os.path.exists(high_poly_tex):
-            high_mesh.set("BaseTexture", os.path.normpath(os.path.abspath(high_poly_tex)))
+            high_mesh.set("BaseTex", os.path.normpath(os.path.abspath(high_poly_tex)))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
         low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
-        low_mesh.set("MaxRayDistanceFront", "0.050000")
-        low_mesh.set("MaxRayDistanceBack", "0.050000")
-        low_mesh.set("MatchUV", "true")
+        low_mesh.set("MaxRayDistanceFront", "0.500000")
+        low_mesh.set("MaxRayDistanceBack", "0.500000")
 
         generation = ET.SubElement(root, "GenerateMaps")
         generation.set("Width", str(max_res))
