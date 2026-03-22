@@ -5,6 +5,7 @@ import requests
 import subprocess
 import sys
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from scripts.main_pipeline import get_app_paths, load_config, resolve_path
 
 # ==========================================
@@ -102,13 +103,18 @@ def _process_single_file(filename):
     print(f"\n--- Initiating Meshy generation for {filename} ---")
     image_path = os.path.join(INPUT_FOLDER, filename)
 
-    data_uri = get_base64_image(image_path)
-    task_id = create_meshy_task(data_uri)
+    try:
+        data_uri = get_base64_image(image_path)
+        task_id = create_meshy_task(data_uri)
 
-    if task_id and download_model(task_id, filename):
-        os.remove(image_path)
-        print(f"🗑️ Removed original image: {filename}")
-        return True
+        if task_id and download_model(task_id, filename):
+            os.remove(image_path)
+            print(f"🗑️ Removed original image: {filename}")
+            return True
+    except ValueError as e:
+        print(f"❌ Skipped {filename}: {e}")
+    except Exception as e:
+        print(f"❌ Error processing {filename}: {e}")
     return False
 
 def main():
@@ -117,21 +123,13 @@ def main():
 
     files_processed = 0
     if os.path.exists(INPUT_FOLDER):
-        for filename in os.listdir(INPUT_FOLDER):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                print(f"\n--- Initiating Meshy generation for {filename} ---")
-                image_path = os.path.join(INPUT_FOLDER, filename)
+        image_files = [f for f in os.listdir(INPUT_FOLDER) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
 
-                try:
-                    data_uri = get_base64_image(image_path)
-                    task_id = create_meshy_task(data_uri)
-
-                    if task_id and download_model(task_id, filename):
-                        files_processed += 1
-                        os.remove(image_path)
-                        print(f"🗑️ Removed original image: {filename}")
-                except ValueError as e:
-                    print(f"❌ Skipped {filename}: {e}")
+        if image_files:
+            # Concurrent processing to avoid blocking the main thread
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(_process_single_file, image_files))
+                files_processed = sum(1 for r in results if r)
 
     if files_processed > 0:
         print(f"\n🚀 Generation complete. Handing off to ChrisEurolog Pipeline...")

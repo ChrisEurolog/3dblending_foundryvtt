@@ -23,26 +23,34 @@ sys.modules['scripts.main_pipeline'] = mock_pipeline
 import scripts.meshy_feeder as feeder
 
 class TestMeshyFeederImage(unittest.TestCase):
-    def test_get_base64_image_png(self):
+    @patch('os.path.getsize')
+    def test_get_base64_image_png(self, mock_getsize):
+        mock_getsize.return_value = 100
         m = mock_open(read_data=b"fake_image_data")
         with patch('builtins.open', m):
             result = feeder.get_base64_image("test_image.png")
             # b"fake_image_data" encoded is 'ZmFrZV9pbWFnZV9kYXRh'
             self.assertEqual(result, "data:image/png;base64,ZmFrZV9pbWFnZV9kYXRh")
 
-    def test_get_base64_image_jpg(self):
+    @patch('os.path.getsize')
+    def test_get_base64_image_jpg(self, mock_getsize):
+        mock_getsize.return_value = 100
         m = mock_open(read_data=b"fake_image_data")
         with patch('builtins.open', m):
             result = feeder.get_base64_image("test_image.jpg")
             self.assertEqual(result, "data:image/jpeg;base64,ZmFrZV9pbWFnZV9kYXRh")
 
-    def test_get_base64_image_jpeg(self):
+    @patch('os.path.getsize')
+    def test_get_base64_image_jpeg(self, mock_getsize):
+        mock_getsize.return_value = 100
         m = mock_open(read_data=b"fake_image_data")
         with patch('builtins.open', m):
             result = feeder.get_base64_image("test_image.jpeg")
             self.assertEqual(result, "data:image/jpeg;base64,ZmFrZV9pbWFnZV9kYXRh")
 
-    def test_get_base64_image_case_insensitive(self):
+    @patch('os.path.getsize')
+    def test_get_base64_image_case_insensitive(self, mock_getsize):
+        mock_getsize.return_value = 100
         m = mock_open(read_data=b"fake_image_data")
         with patch('builtins.open', m):
             result = feeder.get_base64_image("test_image.PNG")
