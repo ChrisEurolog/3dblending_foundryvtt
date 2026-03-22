@@ -66,7 +66,9 @@ class TestBlenderExtractLogic(unittest.TestCase):
             with patch.dict('sys.modules', {'bmesh': MagicMock()}):
                 be.process()
 
-        mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+        # We no longer expect normals_make_consistent on the High Poly mesh due to
+        # intersecting geometry flipping chunks inside out.
+        mock_bpy.ops.mesh.normals_make_consistent.assert_not_called()
 
 if __name__ == '__main__':
     unittest.main()

@@ -129,33 +129,9 @@ def process():
     high_obj = bpy.context.view_layer.objects.active
     high_obj.name = "HighPoly_Master"
 
-    # We MUST weld vertices! GLBs split vertices at every UV seam.
-    # If we don't weld first, decimation will rip the mesh into a shattered polygon soup,
-    # and recalculating normals on an unwelded mesh will cause erratic, flipped normal bakes.
-    bpy.ops.object.mode_set(mode='EDIT')
-    import bmesh
-    bm = bmesh.from_edit_mesh(high_obj.data)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
-    bmesh.update_edit_mesh(high_obj.data)
-
-    # Ensure consistent normals
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.normals_make_consistent(inside=False)
-    bpy.ops.object.mode_set(mode='OBJECT')
-
-    # Important: Clear custom split normals inherited from the GLB
-    # Welding vertices severely mangles existing custom split normals, causing shattered/black texture bakes.
-    # Do not use customdata_custom_splitnormals_clear() here without try/except as it causes a fatal exception in Blender 5.0+
-    # when the custom data layer doesn't exist.
-    try:
-        bpy.ops.mesh.customdata_custom_splitnormals_clear()
-    except Exception:
-        pass
-
-    # Smooth normals
-    bpy.ops.object.shade_smooth()
-
-    # Normalize origin and scale
+    # Normalize origin and scale FIRST, before welding.
+    # This ensures models are size 1.0, so the remove_doubles distance (0.0001) scales perfectly
+    # regardless of the original imported GLB dimensions.
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
     high_obj.location = (0, 0, 0)
     bpy.context.view_layer.update()
@@ -168,14 +144,37 @@ def process():
             high_obj.scale = (scale_factor, scale_factor, scale_factor)
 
     # Make sure we select the object and set it active before applying transforms
-    # Sometimes joining or origin sets might mess up selection context
     bpy.ops.object.select_all(action='DESELECT')
     high_obj.select_set(True)
     bpy.context.view_layer.objects.active = high_obj
 
     # Force apply all transformations (Location, Rotation, Scale) to the mesh data
-    # This prevents the 90 degree X rotation from Meshy GLBs from being interpreted incorrectly later
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    bpy.context.view_layer.update()
+
+    # We MUST weld vertices! GLBs split vertices at every UV seam.
+    # If we don't weld first, decimation will rip the mesh into a shattered polygon soup.
+    bpy.ops.object.mode_set(mode='EDIT')
+    import bmesh
+    bm = bmesh.from_edit_mesh(high_obj.data)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+    bmesh.update_edit_mesh(high_obj.data)
+    bpy.ops.object.mode_set(mode='OBJECT')
+
+    # DO NOT CALL `normals_make_consistent` on the High Poly mesh.
+    # Joining multiple intersecting meshes and welding them creates non-manifold internal volumes.
+    # Blender's volume calculation will drastically invert massive chunks of the High Poly mesh,
+    # causing xNormal's `DiscardRayBackFacesHits=True` default to ignore these chunks, rendering them black.
+
+    # Important: Clear custom split normals inherited from the GLB
+    # Welding vertices severely mangles existing custom split normals, causing shattered texture bakes.
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except Exception:
+        pass
+
+    # Smooth normals
+    bpy.ops.object.shade_smooth()
 
     # Force an update of the view layer to ensure transforms are locked
     bpy.context.view_layer.update()
