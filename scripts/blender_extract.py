@@ -176,6 +176,9 @@ def process():
     # Smooth normals
     bpy.ops.object.shade_smooth()
 
+    # Force an update of the view layer to ensure transforms are locked
+    bpy.context.view_layer.update()
+
     # 3. EXPORT TEXTURE
     # Find the base color texture to extract
     output_tex = output_obj.replace(".obj", "_diffuse.png")
