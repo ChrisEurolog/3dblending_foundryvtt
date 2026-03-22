@@ -41,11 +41,6 @@ if not exist "scripts\main_pipeline.py" (
     pause
     exit /b
 )
-if not exist "scripts\blender_worker.py" (
-    echo ❌ Error: scripts\blender_worker.py not found!
-    pause
-    exit /b
-)
 if not exist "scripts\blender_extract.py" (
     echo ❌ Error: scripts\blender_extract.py not found!
     pause
@@ -59,9 +54,8 @@ if not exist "scripts\blender_unwrap_bake.py" (
 
 echo.
 echo Building chriseurolog3d.exe...
-:: Bundles blender_worker.py into the root of the internal temp directory
 :: Uses Windows backslashes for paths
-python -m PyInstaller --clean --onefile --name chriseurolog3d --add-data "scripts\blender_worker.py;." --add-data "scripts\blender_extract.py;." --add-data "scripts\blender_unwrap_bake.py;." --hidden-import scripts.meshy_feeder --hidden-import requests "scripts\main_pipeline.py"
+python -m PyInstaller --clean --onefile --name chriseurolog3d --add-data "scripts\blender_extract.py;." --add-data "scripts\blender_unwrap_bake.py;." --hidden-import scripts.meshy_feeder --hidden-import requests "scripts\main_pipeline.py"
 
 if %errorlevel% neq 0 (
     echo ❌ Build failed!
