@@ -20,7 +20,6 @@ class TestBlenderUnwrapBake(unittest.TestCase):
     def test_normals_make_consistent_called(self, mock_run, mock_exists, mock_print, mock_exit):
         mock_exists.return_value = True
 
-
         # Setup mock objects
         mock_obj = MagicMock()
         mock_obj.type = 'MESH'
@@ -35,22 +34,13 @@ class TestBlenderUnwrapBake(unittest.TestCase):
         mock_bpy.ops.wm.quit_blender = MagicMock()
         mock_bpy.ops.export_scene.gltf = MagicMock()
 
-
-        mock_bpy.context.view_layer.objects.active = mock_obj
-
-        test_args = ['blender', '--background', '--python', 'blender_unwrap_bake.py', '--', 'high.obj', 'low.obj', 'tex.png', 'out.glb', 'xnormal.exe']
-
-        mock_bpy.ops.wm.obj_export = MagicMock()
-        mock_bpy.ops.wm.quit_blender = MagicMock()
-        mock_bpy.ops.export_scene.gltf = MagicMock()
-
         with patch.object(sys, 'argv', test_args):
             with patch.dict('sys.modules', {'bmesh': MagicMock()}):
                 with patch('os.remove'):
                     be.process()
 
-
         mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+        mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
 
 if __name__ == '__main__':
     unittest.main()

@@ -48,25 +48,11 @@ class TestBlenderExtractLogic(unittest.TestCase):
         mock_exists.return_value = True
         mock_validate.return_value = True
 
-
         # Setup mock objects
         mock_obj = MagicMock()
         mock_obj.type = 'MESH'
         mock_obj.data.vertices = [1] * 100
         mock_bpy.data.objects = [mock_obj]
-
-        mock_bpy.context.view_layer.objects.active = mock_obj
-
-        test_args = ['blender', '--background', '--python', 'blender_extract.py', '--', 'input.glb', 'output.obj']
-
-        # We need to stub out the save method so it doesn't crash on mocked images
-        mock_bpy.ops.wm.obj_export = MagicMock()
-        mock_bpy.ops.wm.quit_blender = MagicMock()
-
-        with patch.object(sys, 'argv', test_args):
-            with patch.dict('sys.modules', {'bmesh': MagicMock()}):
-                be.process()
-
 
         mock_bpy.context.view_layer.objects.active = mock_obj
 
