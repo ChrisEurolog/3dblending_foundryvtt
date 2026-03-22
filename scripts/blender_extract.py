@@ -5,9 +5,7 @@ import urllib.parse
 import json
 import struct
 
-# ==========================================
 # SECURITY & VALIDATION
-# ==========================================
 def is_safe_uri(uri):
     if uri.startswith('data:'):
         return True
@@ -130,6 +128,7 @@ def process():
     high_obj.name = "HighPoly_Master"
 
     # We MUST weld vertices! GLBs split vertices at every UV seam.
+    # We MUST weld vertices! GLBs split vertices at every UV seam.
     # If we don't weld first, decimation will rip the mesh into a shattered polygon soup,
     # and recalculating normals on an unwelded mesh will cause erratic, flipped normal bakes.
     bpy.ops.object.mode_set(mode='EDIT')
@@ -137,6 +136,7 @@ def process():
     bm = bmesh.from_edit_mesh(high_obj.data)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
     bmesh.update_edit_mesh(high_obj.data)
+
 
     # Ensure consistent normals
     bpy.ops.mesh.select_all(action='SELECT')
@@ -173,6 +173,9 @@ def process():
     # Force apply all transformations (Location, Rotation, Scale) to the mesh data
     # This prevents the 90 degree X rotation from Meshy GLBs from being interpreted incorrectly later
     bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+
+    # Force an update of the view layer to ensure transforms are locked
+    bpy.context.view_layer.update()
 
     # Force an update of the view layer to ensure transforms are locked
     bpy.context.view_layer.update()
@@ -228,6 +231,7 @@ def process():
     # Decimate the high-poly mesh down to the target vertices before passing to Instant Meshes
     # This prevents Instant Meshes from choking on 800k+ vertex inputs and failing to hit the target,
     # while leaving the original 800k mesh untouched on disk for xNormal to bake from.
+
 
     verts_len = max(len(high_obj.data.vertices), 1)
     if verts_len > target_verts:

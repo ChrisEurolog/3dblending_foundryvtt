@@ -59,6 +59,7 @@ def process():
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
     bmesh.update_edit_mesh(low_obj.data)
 
+
     # Select all again just to be safe
     bpy.ops.mesh.select_all(action='SELECT')
     # Un-mark any sharp edges that might have come through Instant Meshes
