@@ -40,6 +40,7 @@ class TestBlenderUnwrapBake(unittest.TestCase):
                     be.process()
 
         mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
+        mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
 
 if __name__ == '__main__':
     unittest.main()

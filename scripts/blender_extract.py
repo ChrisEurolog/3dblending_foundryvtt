@@ -143,6 +143,15 @@ def process():
     bpy.ops.mesh.normals_make_consistent(inside=False)
     bpy.ops.object.mode_set(mode='OBJECT')
 
+    # Important: Clear custom split normals inherited from the GLB
+    # Welding vertices severely mangles existing custom split normals, causing shattered/black texture bakes.
+    # Do not use customdata_custom_splitnormals_clear() here without try/except as it causes a fatal exception in Blender 5.0+
+    # when the custom data layer doesn't exist.
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except Exception:
+        pass
+
     # Normalize origin and scale
     bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
     high_obj.location = (0, 0, 0)
@@ -236,6 +245,11 @@ def process():
         bpy.ops.mesh.select_all(action='SELECT')
         bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
+
+        try:
+            bpy.ops.mesh.customdata_custom_splitnormals_clear()
+        except Exception:
+            pass
 
     sculpt_obj_path = output_obj.replace(".obj", "_sculpt.obj")
 

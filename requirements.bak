@@ -1,0 +1,20 @@
+# This is a locked dependency file with SHA256 hashes.
+# Every dependency must be pinned and include at least one --hash.
+# Example:
+# some-package==1.2.3 \
+#     --hash=sha256:abcdef...
+
+requests==2.31.0 \
+    --hash=sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1ce0faa1fcce6a47ea1314686b8 \
+    --hash=sha256:18d3630f9a2e617d9a8e0f10ccebc627581512db49af2f01f849ffb8b6a378d3 \
+    --hash=sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f
+certifi==2024.2.2 \
+    --hash=sha256:eed1ebf6ec6d1cb85aa16ddc7ddc528f8f2b7b83f47e3a98555ce654f5b5cff3 \
+    --hash=sha256:dc383c07b76109f368f6106eee2b593b04a011ea4d55f652c6ca24a754d1cdd1
+charset-normalizer==3.3.2 \
+    --hash=sha256:f30c3cb33b24454a82faecaf01b19c18562b1e89558fb6c56de4d9118a032fd5
+idna==3.6 \
+    --hash=sha256:c05567e9c24a6b9faaa835c4821bad0590fbb9d5779e7caa6e1cc4978e7eb24f
+urllib3==2.2.1 \
+    --hash=sha256:d0570876c61ab9e520d776c38acbff5db3d1bb6646231ec114258fba054dc247 \
+    --hash=sha256:450b20ec296a467077128bff42b73080516e71b56ff59a60a02bef2232c4fa9d
