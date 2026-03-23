@@ -250,6 +250,7 @@ def process():
     # Kept raw _baked.png file for diagnostic inspection
     # if os.path.exists(actual_baked_png): os.remove(actual_baked_png)
 
+    bpy.ops.wm.save_as_mainfile(filepath=output_glb.replace('.glb', '_debug.blend'))
     bpy.ops.wm.quit_blender()
 
 if __name__ == "__main__":
