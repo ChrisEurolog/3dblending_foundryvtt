@@ -126,7 +126,7 @@ def process():
         high_mesh.set("Scale", "1.000000")
         high_mesh.set("IgnorePerVertexColor", "true")
         if high_poly_tex and os.path.exists(high_poly_tex):
-            high_mesh.set("BaseTex", os.path.normpath(os.path.abspath(high_poly_tex)))
+            high_mesh.set("BaseTexture", os.path.normpath(os.path.abspath(high_poly_tex)))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")

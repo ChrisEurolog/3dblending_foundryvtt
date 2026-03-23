@@ -2,3 +2,4 @@ __pycache__/
 *.pyc
 axiom_config.json
 venv/
+build/
