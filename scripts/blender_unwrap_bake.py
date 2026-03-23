@@ -3,6 +3,7 @@ import os
 import sys
 import xml.etree.ElementTree as ET
 import subprocess
+import glob
 
 def process():
     try:
@@ -79,7 +80,7 @@ def process():
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-    bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.03)
+    bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.05)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # 5. SMOOTH NORMALS
@@ -126,14 +127,14 @@ def process():
         high_mesh.set("Scale", "1.000000")
         high_mesh.set("IgnorePerVertexColor", "true")
         if high_poly_tex and os.path.exists(high_poly_tex):
-            high_mesh.set("BaseTexture", os.path.normpath(os.path.abspath(high_poly_tex)))
+            high_mesh.set("BaseTex", os.path.normpath(os.path.abspath(high_poly_tex)))
 
         low_poly_model = ET.SubElement(root, "LowPolyModel")
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
         low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
-        low_mesh.set("MaxRayDistanceFront", "0.500000")
-        low_mesh.set("MaxRayDistanceBack", "0.500000")
+        low_mesh.set("MaxRayDistanceFront", "5.000000")
+        low_mesh.set("MaxRayDistanceBack", "5.000000")
 
         generation = ET.SubElement(root, "GenerateMaps")
         generation.set("Width", str(max_res))
@@ -143,7 +144,7 @@ def process():
         generation.set("AA", "4")
         generation.set("GenNormals", "false")
         generation.set("GenAO", "false")
-        generation.set("BakeHighpolyBaseTex", "true")
+        generation.set("BakeBaseTexture", "true")
 
         # Add Options block which xNormal batch processor expects
         options = ET.SubElement(root, "Options")
@@ -205,18 +206,17 @@ def process():
         # Wait for texture to be generated if process exited early
         import time
         timeout = time.time() + 60
-        actual_baked_png = baked_tex_png.replace(".png", "_baseTex.png")
 
         # xNormal handles "File" differently sometimes depending on internal logic. Check multiple variants.
-        possible_outputs = [
-            actual_baked_png,
-            baked_tex_png,
-            baked_tex_png.replace(".png", "_base.png"),
-            baked_tex_png.replace(".png", "_baseTexBaked.png")
-        ]
+        search_pattern = baked_tex_png.replace(".png", "*.png")
 
         final_png = None
         while time.time() < timeout:
+            possible_outputs = glob.glob(search_pattern)
+            # Also consider the exact filename just in case
+            if baked_tex_png not in possible_outputs:
+                possible_outputs.append(baked_tex_png)
+
             for p in possible_outputs:
                 if os.path.exists(p) and os.path.getsize(p) > 0:
                     final_png = p
@@ -226,7 +226,7 @@ def process():
             time.sleep(1)
 
         if not final_png:
-             print(f"❌ xNormal timeout: Could not locate baked texture at {actual_baked_png}")
+             print(f"❌ xNormal timeout: Could not locate baked texture matching {search_pattern}")
 
              # Fallback debug log parser
              print_xnormal_log()
@@ -238,6 +238,7 @@ def process():
 
     except Exception as e:
         print(f"❌ Error generating xNormal batch: {e}")
+        actual_baked_png = baked_tex_png
         sys.exit(1)
 
     # 8. LOAD TEXTURE & APPLY MATTE FINISH
@@ -255,6 +256,11 @@ def process():
     tex_node.image = loaded_image
     nodes.active = tex_node
     tex_node.select = True
+
+    # Clear any existing links to Base Color
+    if 'Base Color' in bsdf.inputs:
+        for link in list(bsdf.inputs['Base Color'].links):
+            baked_mat.node_tree.links.remove(link)
 
     baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
