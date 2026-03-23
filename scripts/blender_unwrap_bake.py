@@ -143,7 +143,7 @@ def process():
         generation.set("AA", "4")
         generation.set("GenNormals", "false")
         generation.set("GenAO", "false")
-        generation.set("BakeHighpolyBaseTex", "true")
+        generation.set("BakeBaseTexture", "true")
 
         # Add Options block which xNormal batch processor expects
         options = ET.SubElement(root, "Options")
