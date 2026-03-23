@@ -120,17 +120,25 @@ def process():
     high_mat = bpy.data.materials.new(name="HighPoly_Mat")
     high_mat.use_nodes = True
     nodes = high_mat.node_tree.nodes
-    bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
+
+    # Use Emission for bake source to avoid light transport issues
+    emission_node = nodes.new('ShaderNodeEmission')
+
+    # Get the material output node
+    mat_output = next((n for n in nodes if n.type == 'OUTPUT_MATERIAL'), None)
+    if not mat_output:
+        mat_output = nodes.new('ShaderNodeOutputMaterial')
+
+    # Link Emission to Material Output
+    high_mat.node_tree.links.new(emission_node.outputs['Emission'], mat_output.inputs['Surface'])
 
     if high_poly_tex and os.path.exists(high_poly_tex):
         tex_node = nodes.new('ShaderNodeTexImage')
         loaded_image = bpy.data.images.load(high_poly_tex)
         tex_node.image = loaded_image
 
-        if 'Base Color' in bsdf.inputs:
-            for link in list(bsdf.inputs['Base Color'].links):
-                high_mat.node_tree.links.remove(link)
-        high_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+        # Link Texture directly to Emission Color
+        high_mat.node_tree.links.new(tex_node.outputs['Color'], emission_node.inputs['Color'])
 
     for obj in high_poly_objs:
         obj.data.materials.clear()
@@ -168,12 +176,11 @@ def process():
 
     try:
         bpy.ops.object.bake(
-            type='DIFFUSE',
+            type='EMIT',
             use_selected_to_active=True,
-            cage_extrusion=0.02,
+            max_ray_distance=0.1,
             margin=8,
-            margin_type='EXTEND',
-            pass_filter={'COLOR'} # Direct and Indirect lighting disabled
+            margin_type='EXTEND'
         )
         print("✅ Cycles bake complete!")
     except Exception as e:
