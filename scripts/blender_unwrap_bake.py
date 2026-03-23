@@ -178,8 +178,8 @@ def process():
         bpy.ops.object.bake(
             type='EMIT',
             use_selected_to_active=True,
-            cage_extrusion=0.02,
-            max_ray_distance=0.05,
+            use_cage=True,
+            cage_extrusion=0.1,
             margin=8,
             margin_type='EXTEND'
         )
