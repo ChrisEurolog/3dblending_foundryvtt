@@ -170,7 +170,7 @@ def process():
         bpy.ops.object.bake(
             type='DIFFUSE',
             use_selected_to_active=True,
-            cage_extrusion=0.5,
+            cage_extrusion=0.02,
             margin=8,
             margin_type='EXTEND',
             pass_filter={'COLOR'} # Direct and Indirect lighting disabled
@@ -239,7 +239,8 @@ def process():
     print("✅ Success!")
 
     # Cleanup
-    if os.path.exists(actual_baked_png): os.remove(actual_baked_png)
+    # Kept raw _baked.png file for diagnostic inspection
+    # if os.path.exists(actual_baked_png): os.remove(actual_baked_png)
 
     bpy.ops.wm.quit_blender()
 
