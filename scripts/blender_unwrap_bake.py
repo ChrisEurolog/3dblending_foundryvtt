@@ -142,7 +142,7 @@ def process():
         generation.set("EdgePadding", "16")
         generation.set("File", os.path.normpath(os.path.abspath(baked_tex_png)))
         generation.set("AA", "4")
-        generation.set("GenNormals", "false")
+        generation.set("GenNormals", "true")
         generation.set("GenAO", "false")
         generation.set("BakeBaseTexture", "true")
 
@@ -217,7 +217,10 @@ def process():
             if baked_tex_png not in possible_outputs:
                 possible_outputs.append(baked_tex_png)
 
-            for p in possible_outputs:
+            # Filter out the dummy normal map
+            filtered_outputs = [p for p in possible_outputs if "_normals" not in p.lower()]
+
+            for p in filtered_outputs:
                 if os.path.exists(p) and os.path.getsize(p) > 0:
                     final_png = p
                     break
