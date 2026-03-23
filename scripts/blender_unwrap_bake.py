@@ -79,7 +79,7 @@ def process():
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
     # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-    bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.03)
+    bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.05)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # 5. SMOOTH NORMALS
@@ -132,8 +132,8 @@ def process():
         low_mesh = ET.SubElement(low_poly_model, "Mesh")
         low_mesh.set("File", os.path.normpath(os.path.abspath(temp_unwrapped_obj)))
         low_mesh.set("Scale", "1.000000")
-        low_mesh.set("MaxRayDistanceFront", "0.500000")
-        low_mesh.set("MaxRayDistanceBack", "0.500000")
+        low_mesh.set("MaxRayDistanceFront", "5.000000")
+        low_mesh.set("MaxRayDistanceBack", "5.000000")
 
         generation = ET.SubElement(root, "GenerateMaps")
         generation.set("Width", str(max_res))
@@ -255,6 +255,11 @@ def process():
     tex_node.image = loaded_image
     nodes.active = tex_node
     tex_node.select = True
+
+    # Clear any existing links to Base Color
+    if 'Base Color' in bsdf.inputs:
+        for link in list(bsdf.inputs['Base Color'].links):
+            baked_mat.node_tree.links.remove(link)
 
     baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 
