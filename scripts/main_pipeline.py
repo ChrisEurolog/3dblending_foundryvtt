@@ -198,7 +198,8 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     # Decimate down to ~4x the target vertices (for example, ~80k vertices for a 20k target)
     # This prevents Instant Meshes from choking on massive 800k+ inputs, while
     # leaving enough geometric detail for a clean retopology.
-    target_extract_v = str(target_v * 4)
+    extract_cap = profile_data.get('extract_v', target_v * 10)
+    target_extract_v = str(extract_cap)
 
     extract_cmd = [
         blender_exe, "--background", "--python", blender_extract, "--",
