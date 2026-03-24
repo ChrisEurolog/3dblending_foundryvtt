@@ -226,17 +226,36 @@ def process():
         if base_objs:
             base_obj = base_objs[0]
             
-            # Snap the character up so it stands ON the base (0.05m tall)
-            low_obj.location.z = 0.05
+            # --- ROBUST POSITIONING FIX (No more hula hoops!) ---
+            # Instead of guessing based on Bolar's origin point (his waist),
+            # we mathematically calculate his true 'feet' floor.
+            print("🔹 Calculating feet position for absolute alignment...")
+            bpy.context.view_layer.objects.active = low_obj
+            # Must update matrix to get accurate bounding box data after recent imports/merges
+            bpy.context.view_layer.update() 
+            
+            # Use Bounding Box data to find the absolute lowest Vertex Z coordinate.
+            # (Works regardless of where the artist put his origin pivot).
+            bound_box_z_coords = [v[2] for v in low_obj.bound_box]
+            mesh_bottom_z_local = min(bound_box_z_coords)
+
+            # To make Bolar stand exactly ON the ring, we need to lift him.
+            # Formula: [Target Base Top (0.05m)] minus [Bolar's Floor offset]
+            # Assumes Bolar starts at world Z=0 (which he does on import).
+            new_z_lift_distance = 0.05 - mesh_bottom_z_local
+            low_obj.location.z = new_z_lift_distance
+            print(f"✅ Bolar lifted by {new_z_lift_distance:.3f}m to stand ON the base.")
+            # ----------------------------------------------------
             
             # Select both to join them
+            bpy.ops.object.select_all(action='DESELECT')
             low_obj.select_set(True)
             base_obj.select_set(True)
             
             # Make the character the active object so the final name remains correct
             bpy.context.view_layer.objects.active = low_obj
             bpy.ops.object.join()
-            print("✅ Master Base attached successfully!")
+            print("✅ Branded token unified!")
     else:
         print(f"⚠️ Warning: Master base not found at {base_master_path}. Exporting baseless.")
 
