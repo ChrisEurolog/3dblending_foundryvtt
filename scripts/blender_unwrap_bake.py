@@ -178,7 +178,7 @@ def process():
     
     # Extrude the cage by exactly 2% of the character's total size
     # (e.g., A 2m tall Dwarf gets 0.04m. A 1m Goblin gets 0.02m)
-    dynamic_extrusion = max_dimension * 0.02
+    dynamic_extrusion = max_dimension * 0.021
     print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
     # -------------------------------
 
