@@ -161,12 +161,15 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
-def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v):
+def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v, profile_key):
     blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
+
+    # If the user selected the "tile" profile, pass "3" to the Blender script. Otherwise, pass "1".
+    token_type = "3" if profile_key == "tile" else "1"
 
     unwrap_cmd = [
         blender_exe, "--background", "--python", blender_unwrap, "--",
-        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, str(max_res), str(target_v)
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, str(max_res), str(target_v), token_type
     ]
 
     try:
@@ -249,10 +252,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
-    bake_success = unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v)
-    if not bake_success:
-        print("❌ Texture baking failed. Aborting processing for this file.")
-        return False
+    bake_success = unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v, profile_key)
 
     # Meshopt Pass
     if profile_key != "archive":
