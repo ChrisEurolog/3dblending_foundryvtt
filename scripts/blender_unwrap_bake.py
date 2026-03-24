@@ -10,7 +10,7 @@ def process():
         argv = []
 
     if len(argv) < 4:
-        print("Usage: blender --background --python blender_unwrap_bake.py -- <high_obj> <low_raw> <high_tex> <output_glb> <max_res> <target_v>")
+        print("Usage: blender --background --python blender_unwrap_bake.py -- <high_obj> <low_raw> <high_tex> <output_glb> <max_res> <target_v> <token_type>")
         sys.exit(1)
 
     high_poly_obj = argv[0]
@@ -19,6 +19,10 @@ def process():
     output_glb = argv[3]
     max_res = int(argv[4]) if len(argv) > 4 else 1024
     target_v = int(argv[5]) if len(argv) > 5 else 20000
+    
+    # NEW: Catch the 7th argument (the profile choice from your main menu)
+    # If it's missing, it defaults to "1" (Character) just to be safe.
+    token_type = str(argv[6]) if len(argv) > 6 else "1"
 
     # 1. CLEAN SCENE
     bpy.ops.object.select_all(action='SELECT')
@@ -205,59 +209,71 @@ def process():
     if 'Specular IOR Level' in bsdf.inputs: bsdf.inputs['Specular IOR Level'].default_value = 0.0
     elif 'Specular' in bsdf.inputs: bsdf.inputs['Specular'].default_value = 0.0
 
-    # 11. ATTACH MASTER BASE (CENTER OF MASS UPDATE)
-    print("🔹 Attaching 'ChrisEurolog3D' Master Base...")
-    base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
-
-    if os.path.exists(base_master_path):
-        bpy.ops.object.select_all(action='DESELECT')
+    # 11. ATTACH MASTER BASE (EXPLICIT MENU CHOICE)
+    if token_type == "3":
+        print("🔹 Profile 3 (Tile/Scenery) selected. Skipping master base attachment.")
         
-        # Import the branded base
-        bpy.ops.import_scene.gltf(filepath=base_master_path)
-        base_objs = bpy.context.selected_objects
+        # We still center it and drop it to the floor for VTTs!
+        print("🔹 Centering prop geometry...")
+        bpy.context.view_layer.objects.active = low_obj
+        bpy.context.view_layer.update() 
         
-        if base_objs:
-            base_obj = base_objs[0]
-            
-            # --- CENTER OF GEOMETRY (MASS) FIX ---
-            print("🔹 Calculating true center of mass to ignore weapons...")
-            bpy.context.view_layer.objects.active = low_obj
-            bpy.context.view_layer.update() 
-            
-            # 1. Z-Lift: Still use bounding box to find the absolute lowest pixel (boot soles)
-            bound_z = [v[2] for v in low_obj.bound_box]
-            mesh_bottom_z_local = min(bound_z)
+        bound_z = [v[2] for v in low_obj.bound_box]
+        mesh_bottom_z_local = min(bound_z)
 
-            # 2. X/Y Center: Average the position of ALL vertices. 
-            # The thousands of vertices in his body will overpower the few vertices in his axe.
-            vertices = low_obj.data.vertices
-            total_verts = len(vertices)
-            
-            if total_verts > 0:
-                center_x = sum(v.co.x for v in vertices) / total_verts
-                center_y = sum(v.co.y for v in vertices) / total_verts
-            else:
-                center_x, center_y = 0.0, 0.0
+        vertices = low_obj.data.vertices
+        total_verts = len(vertices)
+        if total_verts > 0:
+            center_x = sum(v.co.x for v in vertices) / total_verts
+            center_y = sum(v.co.y for v in vertices) / total_verts
+        else:
+            center_x, center_y = 0.0, 0.0
 
-            # Move Bolar so his dense center is at 0,0 and his feet are at 0.05m
-            low_obj.location.x = -center_x
-            low_obj.location.y = -center_y
-            low_obj.location.z = 0.05 - mesh_bottom_z_local
-            
-            print(f"✅ Bolar Centered by Mass! X-Shift: {-center_x:.3f}m | Y-Shift: {-center_y:.3f}m | Z-Lift: {low_obj.location.z:.3f}m")
-            # -----------------------------------
-            
-            # Select both to join them
-            bpy.ops.object.select_all(action='DESELECT')
-            low_obj.select_set(True)
-            base_obj.select_set(True)
-            
-            # Make the character the active object so the final name remains correct
-            bpy.context.view_layer.objects.active = low_obj
-            bpy.ops.object.join()
-            print("✅ Master Base attached and token unified!")
+        low_obj.location.x = -center_x
+        low_obj.location.y = -center_y
+        low_obj.location.z = -mesh_bottom_z_local 
+        
     else:
-        print(f"⚠️ Warning: Master base not found at {base_master_path}. Exporting baseless.")
+        print(f"🔹 Character Profile ({token_type}) detected. Attaching Master Base...")
+        base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
+
+        if os.path.exists(base_master_path):
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.ops.import_scene.gltf(filepath=base_master_path)
+            base_objs = bpy.context.selected_objects
+            
+            if base_objs:
+                base_obj = base_objs[0]
+                
+                # Center of Geometry Math
+                bpy.context.view_layer.objects.active = low_obj
+                bpy.context.view_layer.update() 
+                
+                bound_z = [v[2] for v in low_obj.bound_box]
+                mesh_bottom_z_local = min(bound_z)
+
+                vertices = low_obj.data.vertices
+                total_verts = len(vertices)
+                if total_verts > 0:
+                    center_x = sum(v.co.x for v in vertices) / total_verts
+                    center_y = sum(v.co.y for v in vertices) / total_verts
+                else:
+                    center_x, center_y = 0.0, 0.0
+
+                # Lift to stand on the 0.05m base
+                low_obj.location.x = -center_x
+                low_obj.location.y = -center_y
+                low_obj.location.z = 0.05 - mesh_bottom_z_local
+                
+                bpy.ops.object.select_all(action='DESELECT')
+                low_obj.select_set(True)
+                base_obj.select_set(True)
+                
+                bpy.context.view_layer.objects.active = low_obj
+                bpy.ops.object.join()
+                print("✅ Master Base attached and token unified!")
+        else:
+            print(f"⚠️ Warning: Master base not found at {base_master_path}. Exporting baseless.")
 
     # 12. EXPORT GLB
     print("🔹 Exporting Final VTT Token...")
@@ -268,7 +284,6 @@ def process():
         obj.hide_render = True
         obj.select_set(False)
 
-    # low_obj now contains both the baked character AND the base
     low_obj.select_set(True)
 
     bpy.ops.export_scene.gltf(
