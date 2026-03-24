@@ -205,7 +205,7 @@ def process():
     if 'Specular IOR Level' in bsdf.inputs: bsdf.inputs['Specular IOR Level'].default_value = 0.0
     elif 'Specular' in bsdf.inputs: bsdf.inputs['Specular'].default_value = 0.0
 
-    # 11. ATTACH MASTER BASE
+    # 11. ATTACH MASTER BASE (CENTER OF MASS UPDATE)
     print("🔹 Attaching 'ChrisEurolog3D' Master Base...")
     base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
 
@@ -219,30 +219,32 @@ def process():
         if base_objs:
             base_obj = base_objs[0]
             
-            # --- CENTERING & POSITIONING FIX ---
-            print("🔹 Calculating bounding box for perfect X/Y/Z alignment...")
+            # --- CENTER OF GEOMETRY (MASS) FIX ---
+            print("🔹 Calculating true center of mass to ignore weapons...")
             bpy.context.view_layer.objects.active = low_obj
             bpy.context.view_layer.update() 
             
-            # Grab all coordinates from the 8 corners of the bounding box
-            bbox = low_obj.bound_box
-            bound_x = [v[0] for v in bbox]
-            bound_y = [v[1] for v in bbox]
-            bound_z = [v[2] for v in bbox]
-
-            # Calculate the exact center of the X and Y bounds
-            center_x = (min(bound_x) + max(bound_x)) / 2.0
-            center_y = (min(bound_y) + max(bound_y)) / 2.0
-            
-            # Find the absolute lowest point for the Z axis
+            # 1. Z-Lift: Still use bounding box to find the absolute lowest pixel (boot soles)
+            bound_z = [v[2] for v in low_obj.bound_box]
             mesh_bottom_z_local = min(bound_z)
 
-            # Move Bolar so his center is at 0,0 and his feet are at 0.05m (base top)
+            # 2. X/Y Center: Average the position of ALL vertices. 
+            # The thousands of vertices in his body will overpower the few vertices in his axe.
+            vertices = low_obj.data.vertices
+            total_verts = len(vertices)
+            
+            if total_verts > 0:
+                center_x = sum(v.co.x for v in vertices) / total_verts
+                center_y = sum(v.co.y for v in vertices) / total_verts
+            else:
+                center_x, center_y = 0.0, 0.0
+
+            # Move Bolar so his dense center is at 0,0 and his feet are at 0.05m
             low_obj.location.x = -center_x
             low_obj.location.y = -center_y
             low_obj.location.z = 0.05 - mesh_bottom_z_local
             
-            print(f"✅ Bolar Centered! X-Shift: {-center_x:.3f}m | Y-Shift: {-center_y:.3f}m | Z-Lift: {low_obj.location.z:.3f}m")
+            print(f"✅ Bolar Centered by Mass! X-Shift: {-center_x:.3f}m | Y-Shift: {-center_y:.3f}m | Z-Lift: {low_obj.location.z:.3f}m")
             # -----------------------------------
             
             # Select both to join them
