@@ -160,7 +160,7 @@ def process():
     low_obj.data.materials.clear()
     low_obj.data.materials.append(low_mat)
 
-    # 9. EXECUTE BAKE
+# 9. EXECUTE BAKE
     print("🔹 Executing Cycles Bake...")
     bpy.ops.object.select_all(action='DESELECT')
     for obj in high_poly_objs:
@@ -169,12 +169,25 @@ def process():
     low_obj.select_set(True)
     bpy.context.view_layer.objects.active = low_obj
 
+    # --- DYNAMIC CAGE CALCULATOR ---
+    # Update the scene to ensure we have the correct physical dimensions
+    bpy.context.view_layer.update()
+    
+    # Find the largest physical dimension of the model (usually height/Z)
+    max_dimension = max(low_obj.dimensions)
+    
+    # Extrude the cage by exactly 2% of the character's total size
+    # (e.g., A 2m tall Dwarf gets 0.04m. A 1m Goblin gets 0.02m)
+    dynamic_extrusion = max_dimension * 0.02
+    print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
+    # -------------------------------
+
     try:
         bpy.ops.object.bake(
             type='EMIT',
             use_selected_to_active=True,
             use_cage=True,
-            cage_extrusion=0.04,
+            cage_extrusion=dynamic_extrusion, # <--- Smart variable applied here!
             margin=8,
             margin_type='EXTEND'
         )
