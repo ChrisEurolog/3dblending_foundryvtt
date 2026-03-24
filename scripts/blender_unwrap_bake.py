@@ -100,7 +100,17 @@ def process():
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # 6. SMOOTH NORMALS
+    print("🔹 Applying smooth shading...")
+    bpy.ops.object.mode_set(mode='OBJECT')
     bpy.ops.object.shade_smooth()
+    
+    # [FIX] We must clear the flat custom normals we generated earlier, 
+    # otherwise the glTF exporter ignores the shade_smooth() command!
+    bpy.context.view_layer.objects.active = low_obj
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except Exception:
+        pass
 
     # 7. SETUP CYCLES & HIGH POLY MATERIAL
     print("🔹 Setting up Cycles and High-Poly Material...")
