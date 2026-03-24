@@ -233,7 +233,9 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     im_cmd = [
         instant_meshes_exe,
         "-o", low_poly_raw_obj,
-        "-v", str(im_target),
+        "-f", str(im_target), # [FIX] Use -f (faces) instead of -v, it is much stricter
+        "-D",                 # [FIX] Deterministic mode forces a stable quad grid
+        "-S", "2",            # [FIX] 2 Smoothing steps prevents subdivision panics
         sculpt_obj_path
     ]
 
