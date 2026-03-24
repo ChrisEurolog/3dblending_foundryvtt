@@ -174,7 +174,7 @@ def process():
             type='EMIT',
             use_selected_to_active=True,
             use_cage=True,
-            cage_extrusion=0.05,
+            cage_extrusion=0.035,
             margin=8,
             margin_type='EXTEND'
         )
