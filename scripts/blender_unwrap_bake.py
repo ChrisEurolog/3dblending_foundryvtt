@@ -211,7 +211,36 @@ def process():
     if 'Specular IOR Level' in bsdf.inputs: bsdf.inputs['Specular IOR Level'].default_value = 0.0
     elif 'Specular' in bsdf.inputs: bsdf.inputs['Specular'].default_value = 0.0
 
-    # 11. EXPORT GLB
+    # 11. ATTACH MASTER BASE
+    print("🔹 Attaching 'ChrisEurolog3D' Master Base...")
+    # Assumes the script runs from your project root. Adjust "assets", "bases" if your folders are named differently!
+    base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
+
+    if os.path.exists(base_master_path):
+        bpy.ops.object.select_all(action='DESELECT')
+        
+        # Import the branded base
+        bpy.ops.import_scene.gltf(filepath=base_master_path)
+        base_objs = bpy.context.selected_objects
+        
+        if base_objs:
+            base_obj = base_objs[0]
+            
+            # Snap the character up so it stands ON the base (0.05m tall)
+            low_obj.location.z = 0.05
+            
+            # Select both to join them
+            low_obj.select_set(True)
+            base_obj.select_set(True)
+            
+            # Make the character the active object so the final name remains correct
+            bpy.context.view_layer.objects.active = low_obj
+            bpy.ops.object.join()
+            print("✅ Master Base attached successfully!")
+    else:
+        print(f"⚠️ Warning: Master base not found at {base_master_path}. Exporting baseless.")
+
+    # 12. EXPORT GLB
     print("🔹 Exporting Final VTT Token...")
     bpy.ops.object.select_all(action='DESELECT')
 
@@ -220,6 +249,7 @@ def process():
         obj.hide_render = True
         obj.select_set(False)
 
+    # low_obj now contains both the baked character AND the base
     low_obj.select_set(True)
 
     bpy.ops.export_scene.gltf(
