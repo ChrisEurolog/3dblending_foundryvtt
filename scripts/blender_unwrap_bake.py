@@ -176,9 +176,9 @@ def process():
     # Find the largest physical dimension of the model (usually height/Z)
     max_dimension = max(low_obj.dimensions)
     
-    # Extrude the cage by exactly 2% of the character's total size
-    # (e.g., A 2m tall Dwarf gets 0.04m. A 1m Goblin gets 0.02m)
-    dynamic_extrusion = max_dimension * 0.021
+    # Calculate 2%, but cap the absolute maximum extrusion at 0.01 meters
+    calculated_extrusion = max_dimension * 0.020
+    dynamic_extrusion = min(calculated_extrusion, 0.01)
     print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
     # -------------------------------
 
