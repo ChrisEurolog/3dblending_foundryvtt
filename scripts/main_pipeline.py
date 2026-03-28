@@ -231,14 +231,15 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     # Instant Meshes generates quads (2 triangles each), and UV unwrapping duplicates
     # vertices along every seam. To hit the target vertex count in the final glTF,
     # we must strictly limit Instant Meshes to half the requested vertices.
-    im_target = max(target_v // 2, 100)
+    im_target = max(target_v // 2, 100) 
 
     im_cmd = [
         instant_meshes_exe,
         "-o", low_poly_raw_obj,
-        "-f", str(im_target), # [FIX] Use -f (faces) instead of -v, it is much stricter
-        "-D",                 # [FIX] Deterministic mode forces a stable quad grid
-        "-S", "2",            # [FIX] 2 Smoothing steps prevents subdivision panics
+        "-f", str(im_target), 
+        "-D",                 
+        "-S", "0",            # [FIX] Zero smoothing. Stops the face from melting.
+        "-c", "30",           # [NEW] Forces the algorithm to trace and preserve sharp corners
         sculpt_obj_path
     ]
 
