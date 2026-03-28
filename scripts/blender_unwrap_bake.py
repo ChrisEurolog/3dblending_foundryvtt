@@ -177,7 +177,7 @@ def process():
     max_dimension = max(low_obj.dimensions)
     
     # Calculate 1%, but cap the absolute maximum extrusion at 0.01 meters
-    calculated_extrusion = max_dimension * 0.015
+    calculated_extrusion = max_dimension * 0.01
     dynamic_extrusion = min(calculated_extrusion, 0.02)
     print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
     # -------------------------------
