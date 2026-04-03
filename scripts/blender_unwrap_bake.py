@@ -53,45 +53,78 @@ def process():
         obj.name = "HighPoly_" + obj.name
         obj.hide_render = False
 
-    # 3. IMPORT LOW POLY RAW
-    print(f"🔹 Importing Low-Poly: {low_poly_raw_obj}")
-    bpy.ops.wm.obj_import(
-        filepath=low_poly_raw_obj,
-        forward_axis='Y',
-        up_axis='Z'
-    )
+    # 3 & 4. GENERATE OR IMPORT LOW POLY
+    if token_type == "3":
+        print("🔹 Tile Profile Detected: Bypassing Instant Meshes. Using Planar Decimation on High-Poly...")
 
-    mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH' and obj not in high_poly_objs]
-    if not mesh_objs:
-        print("❌ No mesh objects found in low-poly OBJ.")
-        sys.exit(1)
+        # Duplicate the high-poly mesh to act as our low-poly base
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in high_poly_objs:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = high_poly_objs[0]
+        bpy.ops.object.duplicate()
 
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in mesh_objs:
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = mesh_objs[0]
-    if len(mesh_objs) > 1:
-        bpy.ops.object.join()
-    low_obj = bpy.context.view_layer.objects.active
-    low_obj.name = "LowPoly_Unwrapped"
-    low_obj.hide_render = False
+        mesh_objs = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
+        bpy.context.view_layer.objects.active = mesh_objs[0]
+        if len(mesh_objs) > 1:
+            bpy.ops.object.join()
 
-    # 4. WELD SEAMS AND CLEANUP LOW POLY
-    bpy.ops.object.mode_set(mode='EDIT')
-    import bmesh
-    bm = bmesh.from_edit_mesh(low_obj.data)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001) 
-    bmesh.update_edit_mesh(low_obj.data)
+        low_obj = bpy.context.view_layer.objects.active
+        low_obj.name = "LowPoly_Unwrapped"
+        low_obj.hide_render = False
 
-    bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.mesh.mark_sharp(clear=True)
-    
-    bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
+        # Apply Planar Decimation (called 'DISSOLVE' in the Blender API)
+        # This melts flat walls into single polygons but protects 90-degree corners
+        bpy.ops.object.modifier_add(type='DECIMATE')
+        decimate_mod = low_obj.modifiers["Decimate"]
+        decimate_mod.decimate_type = 'DISSOLVE'
+        decimate_mod.angle_limit = 0.0872665  # Approx 5 degrees in radians
+        bpy.ops.object.modifier_apply(modifier="Decimate")
 
-    print("🔹 Obliterating corrupted normals...")
-    bpy.ops.mesh.set_normals_from_faces()
-    bpy.ops.mesh.normals_make_consistent(inside=False)
-    bpy.ops.object.mode_set(mode='OBJECT')
+        # Triangulate the resulting ngons so the game engine doesn't glitch
+        bpy.ops.object.modifier_add(type='TRIANGULATE')
+        bpy.ops.object.modifier_apply(modifier="Triangulate")
+
+    else:
+        # --- 100% ORIGINAL CHARACTER PIPELINE ---
+        print(f"🔹 Importing Low-Poly: {low_poly_raw_obj}")
+        bpy.ops.wm.obj_import(
+            filepath=low_poly_raw_obj,
+            forward_axis='Y',
+            up_axis='Z'
+        )
+
+        mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH' and obj not in high_poly_objs]
+        if not mesh_objs:
+            print("❌ No mesh objects found in low-poly OBJ.")
+            sys.exit(1)
+
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in mesh_objs:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = mesh_objs[0]
+        if len(mesh_objs) > 1:
+            bpy.ops.object.join()
+        low_obj = bpy.context.view_layer.objects.active
+        low_obj.name = "LowPoly_Unwrapped"
+        low_obj.hide_render = False
+
+        # WELD SEAMS AND CLEANUP LOW POLY
+        bpy.ops.object.mode_set(mode='EDIT')
+        import bmesh
+        bm = bmesh.from_edit_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
+        bmesh.update_edit_mesh(low_obj.data)
+
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.mark_sharp(clear=True)
+
+        bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
+
+        print("🔹 Obliterating corrupted normals...")
+        bpy.ops.mesh.set_normals_from_faces()
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode='OBJECT')
 
     # 5. UNWRAP LOW POLY
     print("🔹 Auto-Unwrapping UVs...")
