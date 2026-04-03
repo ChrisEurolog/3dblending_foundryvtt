@@ -243,8 +243,9 @@ def process():
     bsdf = next((n for n in low_nodes if n.type == 'BSDF_PRINCIPLED'), None) or low_nodes.get("Principled BSDF") or low_nodes.new('ShaderNodeBsdfPrincipled')
 
     if 'Base Color' in bsdf.inputs:
-        for link in list(bsdf.inputs['Base Color'].links):
-            low_mat.node_tree.links.remove(link)
+        base_color_input = bsdf.inputs['Base Color']
+        while base_color_input.links:
+            low_mat.node_tree.links.remove(base_color_input.links[0])
 
     low_mat.node_tree.links.new(bake_tex_node.outputs['Color'], bsdf.inputs['Base Color'])
 

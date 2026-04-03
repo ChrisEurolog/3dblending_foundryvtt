@@ -254,6 +254,9 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
     bake_success = unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v, profile_key)
+    if not bake_success:
+        print("❌ Texture baking failed. Aborting processing for this file.")
+        return False
 
     # Meshopt Pass
     if profile_key != "archive":

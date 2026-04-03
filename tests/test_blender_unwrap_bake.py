@@ -25,7 +25,7 @@ class TestBlenderUnwrapBake(unittest.TestCase):
         mock_high_obj = MagicMock()
         mock_high_obj.type = 'MESH'
         mock_high_obj.name = "HighPoly"
-        mock_high_obj.data.vertices = [1] * 100
+        mock_high_obj.data.vertices = [MagicMock(co=MagicMock(x=0, y=0, z=0))] * 100
 
         # Low poly is imported second
         mock_low_obj = MagicMock()
