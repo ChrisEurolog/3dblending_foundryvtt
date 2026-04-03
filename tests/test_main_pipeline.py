@@ -204,6 +204,55 @@ class TestMainPipeline(unittest.TestCase):
         mock_print.assert_called()
 
     @patch('builtins.print')
+    @patch('builtins.input', return_value="")
+    def test_confirm_settings_defaults(self, mock_input, mock_print):
+        """Test confirm_settings when user chooses defaults (presses Enter)."""
+        profile_key = "test_profile"
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.confirm_settings(profile_key, profile_data, auto=False)
+
+        self.assertEqual(result, (1000, 1024))
+        mock_input.assert_called_once()
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=["edit", "2000", "2048"])
+    def test_confirm_settings_edit_all(self, mock_input, mock_print):
+        """Test confirm_settings when user edits both values."""
+        profile_key = "test_profile"
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.confirm_settings(profile_key, profile_data, auto=False)
+
+        self.assertEqual(result, (2000, 2048))
+        self.assertEqual(mock_input.call_count, 3)
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=["edit", "", "2048"])
+    def test_confirm_settings_edit_res_only(self, mock_input, mock_print):
+        """Test confirm_settings when user edits only resolution."""
+        profile_key = "test_profile"
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.confirm_settings(profile_key, profile_data, auto=False)
+
+        self.assertEqual(result, (1000, 2048))
+        self.assertEqual(mock_input.call_count, 3)
+
+    @patch('builtins.print')
+    @patch('builtins.input', side_effect=["edit", "invalid", "2048"])
+    def test_confirm_settings_invalid_input(self, mock_input, mock_print):
+        """Test confirm_settings handles invalid (non-numeric) input."""
+        profile_key = "test_profile"
+        profile_data = {'target_v': 1000, 'res': 1024}
+
+        result = mp.confirm_settings(profile_key, profile_data, auto=False)
+
+        # Should fall back to defaults on ValueError
+        self.assertEqual(result, (1000, 1024))
+        mock_print.assert_any_call("❌ Invalid number entered. Using defaults.")
+
+    @patch('builtins.print')
     @patch('builtins.input', side_effect=["2"])
     def test_select_profile_invalid_args_profile(self, mock_input, mock_print):
         """Test select_profile with an invalid args_profile falls back to input."""
