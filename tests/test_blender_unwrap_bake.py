@@ -58,11 +58,11 @@ class TestBlenderUnwrapBake(unittest.TestCase):
         mock_bpy.ops.wm.obj_export = MagicMock()
         mock_bpy.ops.wm.quit_blender = MagicMock()
         mock_bpy.ops.export_scene.gltf = MagicMock()
+        mock_bpy.ops.export_scene.fbx = MagicMock()
 
         with patch.object(sys, 'argv', test_args):
             with patch.dict('sys.modules', {'bmesh': MagicMock()}):
-                with patch('os.remove'):
-                    be.process()
+                be.process()
 
         mock_bpy.ops.mesh.normals_make_consistent.assert_called_with(inside=False)
         mock_bpy.ops.mesh.customdata_custom_splitnormals_clear.assert_called()
