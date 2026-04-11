@@ -122,7 +122,7 @@ def process():
     print("🔹 Auto-Unwrapping UVs...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='SCALED', island_margin=0.01)
+    bpy.ops.uv.smart_project(angle_limit=0.785, margin_method='SCALED', island_margin=0.03)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # 6. SMOOTH NORMALS
@@ -197,8 +197,8 @@ def process():
     bpy.context.view_layer.update()
     
     max_dimension = max(low_obj.dimensions)
-    calculated_extrusion = max_dimension * 0.01
-    dynamic_extrusion = min(calculated_extrusion, 0.02)
+    calculated_extrusion = max_dimension * 0.002
+    dynamic_extrusion = min(calculated_extrusion, 0.021)
     print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
 
     try:
