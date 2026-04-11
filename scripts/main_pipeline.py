@@ -293,19 +293,21 @@ def main():
     root_dir = app_paths.base
     paths = config['paths']
 
-    # Extract paths directly from the 'paths' block (Legacy Routing Restored)
-    blender_exe = resolve_path(paths['blender_exe'], root_dir)
+    root_dir = app_paths.base
+    paths = config.get('paths', {})
+    dirs = config.get('directories', {})
+
+    # Extract executables from 'paths'
+    blender_exe = resolve_path(paths.get('blender_exe', ''), root_dir)
     instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', ''), root_dir)
     xnormal_exe = resolve_path(paths.get('xnormal_exe', ''), root_dir)
     gltfpack_exe = resolve_path(paths.get('gltfpack_exe', ''), root_dir)
     
-    source_dir = resolve_path(paths['source_dir'], root_dir)
-    output_dir = resolve_path(paths['output_dir'], root_dir)
-    temp_dir = resolve_path(paths['temp_dir'], root_dir)
-    
-    # Define Archive Dir (Defaults to an 'archive' folder next to the source folder)
-    archive_dir_path = paths.get('archive_dir', os.path.join(os.path.dirname(paths['source_dir']), 'processed_archive'))
-    archive_dir = resolve_path(archive_dir_path, root_dir)
+    # Extract folders from 'directories' (with safe fallbacks to prevent crashes)
+    source_dir = resolve_path(dirs.get('source_files', paths.get('source_dir', './assets/source/exports')), root_dir)
+    output_dir = resolve_path(dirs.get('output_tokens', paths.get('output_dir', './assets/builds')), root_dir)
+    temp_dir = resolve_path(dirs.get('temp_processing', paths.get('temp_dir', './assets/temp')), root_dir)
+    archive_dir = resolve_path(dirs.get('archive', paths.get('archive_dir', './assets/archive')), root_dir)
 
     # Ensure directories exist
     for d in [source_dir, output_dir, temp_dir, archive_dir]:
