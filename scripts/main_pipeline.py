@@ -91,7 +91,7 @@ def select_profile(config_profiles, args_profile):
     profile_options = list(config_profiles.items())
 
     for idx, (name, details) in enumerate(profile_options, 1):
-        print(f"[{idx}] {name} ({details['target_v']} verts, {details['res']}px)")
+        print(f"[{idx}] {name} ({details.get('target_v', 0)} verts, {details.get('res', 1024)}px)")
 
     while True:
         selection = input(f"Select Profile [1-{len(profile_options)}]: ").strip()
@@ -103,8 +103,8 @@ def select_profile(config_profiles, args_profile):
         print("❌ Invalid selection. Please try again.")
 
 def confirm_settings(profile_key, profile_data, auto=False):
-    target_v = profile_data['target_v']
-    max_res = profile_data['res']
+    target_v = profile_data.get('target_v', 20000)
+    max_res = profile_data.get('res', 1024)
 
     print(f"\n✅ Selected: {profile_key}")
     print(f"   Target Vertices: {target_v}")
@@ -127,8 +127,8 @@ def confirm_settings(profile_key, profile_data, auto=False):
             print(f"👉 New Settings: {target_v} verts, {max_res}px")
         except ValueError:
             print("❌ Invalid number entered. Using defaults.")
-            target_v = profile_data['target_v']
-            max_res = profile_data['res']
+            target_v = profile_data.get('target_v', 20000)
+            max_res = profile_data.get('res', 1024)
 
     return target_v, max_res
 
@@ -156,14 +156,14 @@ def get_files_to_process(mode, args_input, source_dir):
 
     return files
 
-def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v, profile_key):
+def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_base, temp_out_glb, max_res, target_v, profile_key):
     blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
 
     token_type = "3" if profile_key == "tile" else "1"
 
     unwrap_cmd = [
         blender_exe, "--background", "--python", blender_unwrap, "--",
-        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, str(max_res), str(target_v), token_type
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_base, temp_out_glb, str(max_res), str(target_v), token_type
     ]
 
     try:
@@ -179,15 +179,17 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
             print(f"⚠️ Warning: File not found: {input_path}")
             return
 
-    temp_out = os.path.join(temp_dir, f)
+    # Routing Paths
+    temp_base = os.path.join(temp_dir, f.replace(".glb", ""))
+    temp_out_glb = f"{temp_base}_unoptimized.glb"
     final_out = os.path.join(output_dir, f.replace(".glb", "_optimized.glb"))
 
-    print(f"🔹 Processing: {f}")
+    print(f"\n🔹 Processing: {f}")
 
     # 1. Blender Extraction Pass
     print("  Running Blender Extraction pass...")
-    high_poly_obj = os.path.join(temp_dir, f.replace(".glb", "_high.obj"))
-    high_poly_tex = high_poly_obj.replace(".obj", "_diffuse.png")
+    high_poly_obj = f"{temp_base}_high.obj"
+    high_poly_tex = f"{temp_base}_high_diffuse.png"
 
     script_dir = app_paths.scripts
     blender_extract = os.path.join(script_dir, "blender_extract.py")
@@ -207,7 +209,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
         return
 
     # 2. Instant Meshes Pass
-    low_poly_raw_obj = os.path.join(temp_dir, f.replace(".glb", "_low_raw.obj"))
+    low_poly_raw_obj = f"{temp_base}_low_raw.obj"
     
     if profile_key == "tile":
         print("  Skipping Instant Meshes pass for 'tile' profile...")
@@ -223,13 +225,12 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
         if not os.path.exists(sculpt_obj_path):
             sculpt_obj_path = high_poly_obj
 
-        # FIXED: Explicitly use the exact requested vertex count
         im_target = max(target_v, 100) 
 
         im_cmd = [
             instant_meshes_exe,
             "-o", low_poly_raw_obj,
-            "-v", str(im_target), # FIXED: explicitly target vertices
+            "-v", str(im_target),
             "-D",                 
             "-S", "0",            
             "-c", "30",           
@@ -238,7 +239,6 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
         try:
             subprocess.run(im_cmd, check=True)
-            print("✅ Instant Meshes generated raw low poly model.")
         except subprocess.CalledProcessError as e:
             print(f"❌ Error running Instant Meshes: {e}")
             return False
@@ -247,17 +247,40 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     print("  Running Blender UV Unwrap and Bake pass...")
     bake_success = unwrap_and_bake(
         blender_exe, app_paths.scripts, f, high_poly_obj, low_poly_raw_obj, 
-        high_poly_tex, final_out, max_res, target_v, profile_key
+        high_poly_tex, temp_base, temp_out_glb, max_res, target_v, profile_key
     )
     
     if bake_success:
-        print(f"✅ Successfully optimized and baked: {f}")
+        # 4. GLTFPack Optimization Pass
+        print("  Running Meshopt (gltfpack) pass...")
+        if not os.path.exists(gltfpack_exe):
+            print(f"⚠️ Warning: gltfpack not found at {gltfpack_exe}. Skipping compression.")
+            shutil.copy(temp_out_glb, final_out)
+        else:
+            meshopt_cmd = [gltfpack_exe, "-i", temp_out_glb, "-o", final_out, "-noq"]
+            try:
+                subprocess.run(meshopt_cmd, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"❌ Meshopt Error on {f}: {e}")
+                return
+
+        # 5. Archive and Cleanup
+        print(f"✅ Success: {f} -> {final_out}")
+        archive_dest = os.path.join(archive_dir, f)
+        if os.path.exists(archive_dest):
+            os.remove(archive_dest)
+        shutil.move(input_path, archive_dest)
+
+        # Optional: Clean up large temp GLB
+        if os.path.exists(temp_out_glb):
+            os.remove(temp_out_glb)
+
     else:
         print(f"❌ Failed during bake step: {f}")
 
 
 # ==========================================
-# MAIN EXECUTION LOOP (Restored)
+# MAIN EXECUTION LOOP
 # ==========================================
 def main():
     app_paths = get_app_paths()
@@ -267,22 +290,31 @@ def main():
         print("Exiting due to missing configuration.")
         sys.exit(1)
 
-    # Extract paths from config
-    blender_exe = resolve_path(config['paths']['blender_exe'], app_paths.base)
-    instant_meshes_exe = resolve_path(config['paths']['instant_meshes_exe'], app_paths.base)
-    xnormal_exe = resolve_path(config['paths'].get('xnormal_exe', ''), app_paths.base)
-    gltfpack_exe = resolve_path(config['paths'].get('gltfpack_exe', ''), app_paths.base)
+    root_dir = app_paths.base
+    paths = config['paths']
+
+    # Extract paths directly from the 'paths' block (Legacy Routing Restored)
+    blender_exe = resolve_path(paths['blender_exe'], root_dir)
+    instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', ''), root_dir)
+    xnormal_exe = resolve_path(paths.get('xnormal_exe', ''), root_dir)
+    gltfpack_exe = resolve_path(paths.get('gltfpack_exe', ''), root_dir)
     
-    source_dir = resolve_path(config['directories']['source_files'], app_paths.base)
-    temp_dir = resolve_path(config['directories']['temp_processing'], app_paths.base)
-    output_dir = resolve_path(config['directories']['output_tokens'], app_paths.base)
-    archive_dir = resolve_path(config['directories'].get('archive', ''), app_paths.base)
+    source_dir = resolve_path(paths['source_dir'], root_dir)
+    output_dir = resolve_path(paths['output_dir'], root_dir)
+    temp_dir = resolve_path(paths['temp_dir'], root_dir)
+    
+    # Define Archive Dir (Defaults to an 'archive' folder next to the source folder)
+    archive_dir_path = paths.get('archive_dir', os.path.join(os.path.dirname(paths['source_dir']), 'processed_archive'))
+    archive_dir = resolve_path(archive_dir_path, root_dir)
+
+    # Ensure directories exist
+    for d in [source_dir, output_dir, temp_dir, archive_dir]:
+        os.makedirs(d, mode=0o755, exist_ok=True)
 
     # Setup Arguments and Profile
     args = parse_args()
     mode = get_processing_mode(args.mode)
     
-    # Optional handler for 'meshy' mode if needed in the future
     if mode == "meshy":
         print("Meshy generation selected. Implementation pending.")
         return
