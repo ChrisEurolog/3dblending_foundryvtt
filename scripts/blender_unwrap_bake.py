@@ -20,6 +20,7 @@ def process():
     max_res = int(argv[4]) if len(argv) > 4 else 1024
     target_v = int(argv[5]) if len(argv) > 5 else 20000
     
+    # Catch the 7th argument (the profile choice from your main menu)
     token_type = str(argv[6]) if len(argv) > 6 else "1"
 
     # 1. CLEAN SCENE
@@ -36,7 +37,11 @@ def process():
         print(f"Error: High-poly file {high_poly_obj} does not exist.")
         sys.exit(1)
 
-    bpy.ops.wm.obj_import(filepath=high_poly_obj, forward_axis='Y', up_axis='Z')
+    bpy.ops.wm.obj_import(
+        filepath=high_poly_obj,
+        forward_axis='Y',
+        up_axis='Z'
+    )
 
     high_poly_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
     if not high_poly_objs:
@@ -69,7 +74,7 @@ def process():
         bpy.ops.object.modifier_add(type='DECIMATE')
         decimate_mod = low_obj.modifiers["Decimate"]
         decimate_mod.decimate_type = 'DISSOLVE'
-        decimate_mod.angle_limit = 0.0872665
+        decimate_mod.angle_limit = 0.0872665  # Approx 5 degrees in radians
         bpy.ops.object.modifier_apply(modifier="Decimate")
 
         bpy.ops.object.modifier_add(type='TRIANGULATE')
@@ -77,7 +82,11 @@ def process():
 
     else:
         print(f"🔹 Importing Low-Poly: {low_poly_raw_obj}")
-        bpy.ops.wm.obj_import(filepath=low_poly_raw_obj, forward_axis='Y', up_axis='Z')
+        bpy.ops.wm.obj_import(
+            filepath=low_poly_raw_obj,
+            forward_axis='Y',
+            up_axis='Z'
+        )
 
         mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH' and obj not in high_poly_objs]
         if not mesh_objs:
@@ -97,8 +106,7 @@ def process():
         bpy.ops.object.mode_set(mode='EDIT')
         import bmesh
         bm = bmesh.from_edit_mesh(low_obj.data)
-        # REDUCED merge distance to prevent thin sleeves from melting together
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
         bmesh.update_edit_mesh(low_obj.data)
 
         bpy.ops.mesh.select_all(action='SELECT')
@@ -110,18 +118,12 @@ def process():
         bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
 
-    # --- THE SMART BYPASS LOGIC ---
-    has_uvs = bool(low_obj.data.uv_layers)
-
-    if has_uvs:
-        print("🟢 Existing UV Map Detected! Preserving original Meshy texture mapping.")
-    else:
-        # 5. UNWRAP LOW POLY (Only if no UVs exist)
-        print("🔹 Auto-Unwrapping UVs...")
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='SCALED', island_margin=0.01)
-        bpy.ops.object.mode_set(mode='OBJECT')
+    # 5. UNWRAP LOW POLY
+    print("🔹 Auto-Unwrapping UVs...")
+    bpy.ops.object.mode_set(mode='EDIT')
+    bpy.ops.mesh.select_all(action='SELECT')
+    bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='SCALED', island_margin=0.01)
+    bpy.ops.object.mode_set(mode='OBJECT')
 
     # 6. SMOOTH NORMALS
     print("🔹 Applying smooth shading...")
@@ -135,14 +137,15 @@ def process():
         pass
 
     # 7. SETUP CYCLES & HIGH POLY MATERIAL
-    print("🔹 Setting up Cycles and Materials...")
+    print("🔹 Setting up Cycles and High-Poly Material...")
     bpy.context.scene.render.engine = 'CYCLES'
     try:
         bpy.context.scene.cycles.device = 'GPU'
         prefs = bpy.context.preferences.addons['cycles'].preferences
         prefs.compute_device_type = 'CUDA'
         prefs.get_devices()
-        for d in prefs.devices: d.use = True
+        for d in prefs.devices:
+            d.use = True
     except Exception:
         pass 
 
@@ -166,64 +169,72 @@ def process():
         obj.data.materials.append(high_mat)
 
     # 8. LOW POLY MATERIAL SETUP
+    print("🔹 Setting up Low-Poly Material for Bake...")
     low_mat = bpy.data.materials.new(name="LowPoly_Mat")
     low_mat.use_nodes = True
     low_nodes = low_mat.node_tree.nodes
-    bsdf = next((n for n in low_nodes if n.type == 'BSDF_PRINCIPLED'), None) or low_nodes.get("Principled BSDF") or low_nodes.new('ShaderNodeBsdfPrincipled')
+
+    baked_image = bpy.data.images.new(name="Baked_Diffuse", width=max_res, height=max_res, alpha=True)
+    bake_tex_node = low_nodes.new('ShaderNodeTexImage')
+    bake_tex_node.image = baked_image
+
+    for node in low_nodes: node.select = False
+    bake_tex_node.select = True
+    low_nodes.active = bake_tex_node
 
     low_obj.data.materials.clear()
     low_obj.data.materials.append(low_mat)
 
-    # --- SMART BAKE OR APPLY ---
-    if has_uvs and high_poly_tex and os.path.exists(high_poly_tex):
-        print("🟢 Applying original texture directly (Skipping Bake)...")
-        tex_node = low_nodes.new('ShaderNodeTexImage')
-        loaded_image = bpy.data.images.load(high_poly_tex)
-        tex_node.image = loaded_image
-        low_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
-    else:
-        print("🔹 Executing Cycles Bake...")
-        baked_image = bpy.data.images.new(name="Baked_Diffuse", width=max_res, height=max_res, alpha=True)
-        bake_tex_node = low_nodes.new('ShaderNodeTexImage')
-        bake_tex_node.image = baked_image
+    # 9. EXECUTE BAKE
+    print("🔹 Executing Cycles Bake...")
+    bpy.ops.object.select_all(action='DESELECT')
+    for obj in high_poly_objs:
+        obj.select_set(True)
 
-        for node in low_nodes: node.select = False
-        bake_tex_node.select = True
-        low_nodes.active = bake_tex_node
+    low_obj.select_set(True)
+    bpy.context.view_layer.objects.active = low_obj
 
-        bpy.ops.object.select_all(action='DESELECT')
-        for obj in high_poly_objs: obj.select_set(True)
-        low_obj.select_set(True)
-        bpy.context.view_layer.objects.active = low_obj
-        bpy.context.view_layer.update()
-        
-        max_dimension = max(low_obj.dimensions)
-        calculated_extrusion = max_dimension * 0.01
-        dynamic_extrusion = min(calculated_extrusion, 0.02) # Restored to 2cm max limit
-        print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
+    bpy.context.view_layer.update()
+    
+    max_dimension = max(low_obj.dimensions)
+    calculated_extrusion = max_dimension * 0.01
+    dynamic_extrusion = min(calculated_extrusion, 0.02)
+    print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
 
-        try:
-            bpy.ops.object.bake(
-                type='EMIT', use_selected_to_active=True, use_cage=True,
-                cage_extrusion=dynamic_extrusion, margin=8, margin_type='EXTEND'
-            )
-            print("✅ Cycles bake complete!")
-        except Exception as e:
-            print(f"❌ Cycles Bake Error: {e}")
-            sys.exit(1)
+    try:
+        bpy.ops.object.bake(
+            type='EMIT',
+            use_selected_to_active=True,
+            use_cage=True,
+            cage_extrusion=dynamic_extrusion,
+            margin=8,
+            margin_type='EXTEND'
+        )
+        print("✅ Cycles bake complete!")
+    except Exception as e:
+        print(f"❌ Cycles Bake Error: {e}")
+        sys.exit(1)
 
-        print("🔹 Saving Texture and Aligning...")
-        actual_baked_png = output_glb.replace('.glb', '_baked.png')
-        baked_image.filepath_raw = actual_baked_png
-        baked_image.file_format = 'PNG'
-        baked_image.save()
+    # 10. SAVE TEXTURE & APPLY MATTE FINISH
+    print("🔹 Saving Texture, Applying Matte Finish and Aligning...")
+    actual_baked_png = output_glb.replace('.glb', '_baked.png')
+    baked_image.filepath_raw = actual_baked_png
+    baked_image.file_format = 'PNG'
+    baked_image.save()
 
-        loaded_image = bpy.data.images.load(actual_baked_png)
-        loaded_image.pack()
-        bake_tex_node.image = loaded_image
-        low_mat.node_tree.links.new(bake_tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+    loaded_image = bpy.data.images.load(actual_baked_png)
+    loaded_image.pack()
+    bake_tex_node.image = loaded_image
 
-    # APPLY MATTE FINISH
+    bsdf = next((n for n in low_nodes if n.type == 'BSDF_PRINCIPLED'), None) or low_nodes.get("Principled BSDF") or low_nodes.new('ShaderNodeBsdfPrincipled')
+
+    if 'Base Color' in bsdf.inputs:
+        base_color_input = bsdf.inputs['Base Color']
+        while base_color_input.links:
+            low_mat.node_tree.links.remove(base_color_input.links[0])
+
+    low_mat.node_tree.links.new(bake_tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+
     if 'Metallic' in bsdf.inputs: bsdf.inputs['Metallic'].default_value = 0.0
     if 'Roughness' in bsdf.inputs: bsdf.inputs['Roughness'].default_value = 0.8
     if 'Coat Weight' in bsdf.inputs: bsdf.inputs['Coat Weight'].default_value = 0.01
@@ -233,7 +244,9 @@ def process():
 
     # 11. ATTACH MASTER BASE
     if token_type == "3":
-        print("🔹 Profile 3 (Tile/Scenery) selected. Centering prop geometry...")
+        print("🔹 Profile 3 (Tile/Scenery) selected. Skipping master base attachment.")
+        
+        print("🔹 Centering prop geometry...")
         bpy.context.view_layer.objects.active = low_obj
         bpy.context.view_layer.update() 
         
@@ -303,12 +316,21 @@ def process():
 
     low_obj.select_set(True)
 
-    # Main GLB Export
-    bpy.ops.export_scene.gltf(filepath=output_glb, export_format='GLB', export_apply=True, use_selection=True)
+    # Main GLB Export (Fully textured and ready for VTT)
+    bpy.ops.export_scene.gltf(
+        filepath=output_glb,
+        export_format='GLB',
+        export_apply=True,
+        use_selection=True
+    )
     
-    # Secondary FBX Export
+    # Secondary FBX Export (For optional Substance Painter use)
     output_fbx = output_glb.replace('.glb', '.fbx')
-    bpy.ops.export_scene.fbx(filepath=output_fbx, use_selection=True, apply_scale_options='FBX_SCALE_ALL')
+    bpy.ops.export_scene.fbx(
+        filepath=output_fbx,
+        use_selection=True,
+        apply_scale_options='FBX_SCALE_ALL'
+    )
     
     print("✅ Success! Both .glb and .fbx generated.")
 
