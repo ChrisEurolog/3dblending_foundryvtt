@@ -245,4 +245,71 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
-    bake_success = unwrap_and_bake
+    bake_success = unwrap_and_bake(
+        blender_exe, app_paths.scripts, f, high_poly_obj, low_poly_raw_obj, 
+        high_poly_tex, final_out, max_res, target_v, profile_key
+    )
+    
+    if bake_success:
+        print(f"✅ Successfully optimized and baked: {f}")
+    else:
+        print(f"❌ Failed during bake step: {f}")
+
+
+# ==========================================
+# MAIN EXECUTION LOOP (Restored)
+# ==========================================
+def main():
+    app_paths = get_app_paths()
+    config = load_config(app_paths.base)
+    
+    if not config:
+        print("Exiting due to missing configuration.")
+        sys.exit(1)
+
+    # Extract paths from config
+    blender_exe = resolve_path(config['paths']['blender_exe'], app_paths.base)
+    instant_meshes_exe = resolve_path(config['paths']['instant_meshes_exe'], app_paths.base)
+    xnormal_exe = resolve_path(config['paths'].get('xnormal_exe', ''), app_paths.base)
+    gltfpack_exe = resolve_path(config['paths'].get('gltfpack_exe', ''), app_paths.base)
+    
+    source_dir = resolve_path(config['directories']['source_files'], app_paths.base)
+    temp_dir = resolve_path(config['directories']['temp_processing'], app_paths.base)
+    output_dir = resolve_path(config['directories']['output_tokens'], app_paths.base)
+    archive_dir = resolve_path(config['directories'].get('archive', ''), app_paths.base)
+
+    # Setup Arguments and Profile
+    args = parse_args()
+    mode = get_processing_mode(args.mode)
+    
+    # Optional handler for 'meshy' mode if needed in the future
+    if mode == "meshy":
+        print("Meshy generation selected. Implementation pending.")
+        return
+
+    profile_key = select_profile(config.get('profiles', {}), args.profile)
+    profile_data = config['profiles'][profile_key]
+    
+    target_v, max_res = confirm_settings(profile_key, profile_data, args.auto)
+    
+    # Get files and process
+    files = get_files_to_process(mode, args.input, source_dir)
+    
+    if not files:
+        print("No files found to process.")
+        return
+
+    for f in files:
+        process_file(
+            f, source_dir, temp_dir, output_dir, blender_exe, 
+            instant_meshes_exe, xnormal_exe, gltfpack_exe, 
+            profile_data, target_v, max_res, app_paths, profile_key, archive_dir
+        )
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nPipeline interrupted by user.")
+        sys.exit(0)
