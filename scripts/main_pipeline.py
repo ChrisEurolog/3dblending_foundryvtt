@@ -35,8 +35,6 @@ def load_config(base_dir):
     config_path = os.path.normpath(config_path)
 
     if not os.path.exists(config_path):
-        # Fallback: Check if config is bundled (e.g. for defaults)
-        # But we prefer the one next to the exe.
         print(f"❌ Error: Config file not found at {config_path}")
         return None
 
@@ -50,7 +48,6 @@ def load_config(base_dir):
         print("❌ Error: Config file is not valid JSON.")
         return None
 
-    # Validate configuration doesn't have unconfigured placeholder paths
     if 'paths' in config:
         for key, path in config['paths'].items():
             if 'PATH_TO_' in path or 'YOUR_' in path:
@@ -144,10 +141,8 @@ def get_files_to_process(mode, args_input, source_dir):
              filename = input(f"\nFilename (in {source_folder}/): ").strip()
 
         # Security Fix: Prevent path traversal by ensuring only the filename is used
-        # Use split('/') instead of os.path.basename for cross-platform reliability
         filename = filename.replace('\\', '/').split('/')[-1]
 
-        # Explicitly reject directory-only paths or dangerous placeholders
         if not filename or filename in (".", ".."):
             print(f"❌ Error: Invalid filename. Path traversal or empty input detected.")
             return []
@@ -164,7 +159,6 @@ def get_files_to_process(mode, args_input, source_dir):
 def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v, profile_key):
     blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
 
-    # If the user selected the "tile" profile, pass "3" to the Blender script. Otherwise, pass "1".
     token_type = "3" if profile_key == "tile" else "1"
 
     unwrap_cmd = [
@@ -214,10 +208,9 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     # 2. Instant Meshes Pass
     low_poly_raw_obj = os.path.join(temp_dir, f.replace(".glb", "_low_raw.obj"))
-
+    
     if profile_key == "tile":
         print("  Skipping Instant Meshes pass for 'tile' profile...")
-        # Create a tiny dummy file to satisfy Blender's initial existence check
         with open(low_poly_raw_obj, 'w') as dummy:
             dummy.write("# Dummy file for tile profile\n")
     else:
@@ -252,167 +245,4 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
-    bake_success = unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out, max_res, target_v, profile_key)
-    if not bake_success:
-        print("❌ Texture baking failed. Aborting processing for this file.")
-        return False
-
-    # Meshopt Pass
-    if profile_key != "archive":
-        print("  Running Meshopt pass...")
-        if not os.path.exists(gltfpack_exe):
-                print(f"⚠️ Warning: gltfpack not found at {gltfpack_exe}. Skipping optimization.")
-                shutil.copy(temp_out, final_out)
-        else:
-            meshopt_cmd = [gltfpack_exe, "-i", temp_out, "-o", final_out, "-noq"]
-            try:
-                subprocess.run(meshopt_cmd, check=True)
-            except subprocess.CalledProcessError as e:
-                    print(f"❌ Meshopt Error on {f}: {e}")
-                    return
-    else:
-        shutil.copy(temp_out, final_out)
-
-    # Cleanup
-    if os.path.exists(temp_out):
-        os.remove(temp_out)
-
-    print(f"✅ Success: {f} -> {final_out}")
-    archive_dest = os.path.join(archive_dir, f)
-    if os.path.exists(archive_dest):
-        os.remove(archive_dest)
-    shutil.move(input_path, archive_dest)
-
-def initialize_pipeline():
-    args = parse_args()
-
-    app_paths = get_app_paths()
-    config = load_config(app_paths.base)
-    if not config:
-        # Prompt user to create one or exit?
-        input("Press Enter to exit...")
-        return None
-
-    root_dir = app_paths.base
-    paths = config['paths']
-
-    # Resolve paths
-    # Blender EXE might be system path or absolute.
-    blender_exe = paths['blender_exe']
-    instant_meshes_exe = resolve_path(paths.get('instant_meshes_exe', './tools/InstantMeshes.exe'), root_dir)
-    xnormal_exe = resolve_path(paths.get('xnormal_exe', 'C:\\Program Files\\xNormal\\3.19.3\\x64\\xNormal.exe'), root_dir)
-    gltfpack_exe = resolve_path(paths.get('gltfpack_exe', paths.get('meshopt_exe')), root_dir)
-
-    # Check for executables
-    try:
-        subprocess.run([blender_exe, "--version"], capture_output=True, check=True)
-    except OSError:
-        print(f"❌ Error: Blender executable not found at '{blender_exe}'. Please check config.json.")
-        return
-
-    if not (os.path.exists(instant_meshes_exe) or shutil.which(instant_meshes_exe)):
-        print(f"❌ Error: Instant Meshes executable not found at '{instant_meshes_exe}'. Please check config.json.")
-        return
-
-    source_dir = resolve_path(paths['source_dir'], root_dir)
-    output_dir = resolve_path(paths['output_dir'], root_dir)
-    temp_dir = resolve_path(paths['temp_dir'], root_dir)
-
-    archive_dir_path = paths.get('archive_dir', os.path.join(os.path.dirname(paths['source_dir']), 'processed_archive'))
-    archive_dir = resolve_path(archive_dir_path, root_dir)
-
-    # Ensure directories exist
-    for d in [output_dir, temp_dir]:
-        os.makedirs(d, mode=0o755, exist_ok=True)
-
-    if not os.path.exists(source_dir):
-         try:
-             os.makedirs(source_dir, mode=0o755, exist_ok=True)
-         except OSError:
-             print(f"❌ Error: Source directory not found and could not be created: {source_dir}")
-             return None
-
-    return PipelineConfig(
-        args=args,
-        app_paths=app_paths,
-        config=config,
-        blender_exe=blender_exe,
-        meshopt_exe=gltfpack_exe,
-        source_dir=source_dir,
-        output_dir=output_dir,
-        temp_dir=temp_dir,
-        instant_meshes_exe=instant_meshes_exe,
-        xnormal_exe=xnormal_exe,
-        archive_dir=archive_dir
-    )
-
-def run_pipeline():
-    pipeline_cfg = initialize_pipeline()
-    if not pipeline_cfg:
-        return
-
-    # Determine Mode
-    mode = get_processing_mode(pipeline_cfg.args.mode)
-
-    if mode == "meshy":
-        print("\n=== Meshy 3D Generation ===")
-        print("Please place your portrait images (png, jpg, jpeg) in the './assets/portraits' folder.")
-        print("WARNING: Files in the portraits folder will be REMOVED after successful generation.")
-        print("Please ensure you have your main source files backed up in a different directory.")
-        user_ready = input("Press Enter when ready to start generation, or type 'cancel' to exit: ").strip().lower()
-        if user_ready == 'cancel':
-            return
-
-        # Import and run meshy feeder
-        import scripts.meshy_feeder
-        scripts.meshy_feeder.main()
-        return
-
-    # Determine Profile
-    profile_key = select_profile(pipeline_cfg.config['profiles'], pipeline_cfg.args.profile)
-
-    if profile_key not in pipeline_cfg.config['profiles']:
-        print(f"❌ Error: Invalid profile '{profile_key}'")
-        return
-
-    profile = pipeline_cfg.config['profiles'][profile_key]
-
-    # Override Vertex/Texture Prompts
-    target_v, max_res = confirm_settings(profile_key, profile, pipeline_cfg.args.auto)
-
-    # Determine Files
-    files = get_files_to_process(mode, pipeline_cfg.args.input, pipeline_cfg.source_dir)
-
-    if not files:
-        print("No files to process.")
-        return
-
-    print(f"\n🚀 Starting processing for {len(files)} files...")
-
-    for f in files:
-        try:
-            process_file(
-                f,
-                pipeline_cfg.source_dir,
-                pipeline_cfg.temp_dir,
-                pipeline_cfg.output_dir,
-                pipeline_cfg.blender_exe,
-                pipeline_cfg.instant_meshes_exe,
-                pipeline_cfg.xnormal_exe,
-                pipeline_cfg.meshopt_exe,
-                profile,
-                target_v,
-                max_res,
-                pipeline_cfg.app_paths,
-                profile_key,
-                pipeline_cfg.archive_dir
-            )
-        except FileNotFoundError as e:
-             # Critical error (e.g. executable not found), already printed in process_file
-             input("Press Enter to exit...")
-             return
-
-    print("Pipeline Finished.")
-
-if __name__ == "__main__":
-    run_pipeline()
+    bake_success = unwrap_and_bake
