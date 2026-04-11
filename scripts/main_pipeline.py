@@ -161,9 +161,10 @@ def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj,
 
     token_type = "3" if profile_key == "tile" else "1"
 
+    # FIXED: Removed 'temp_base' from this list so it passes exactly 7 arguments
     unwrap_cmd = [
         blender_exe, "--background", "--python", blender_unwrap, "--",
-        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_base, temp_out_glb, str(max_res), str(target_v), token_type
+        high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_out_glb, str(max_res), str(target_v), token_type
     ]
 
     try:
