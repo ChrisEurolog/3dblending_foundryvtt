@@ -198,9 +198,6 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
     script_dir = app_paths.scripts
     blender_extract = os.path.join(script_dir, "blender_extract.py")
 
-    # Decimate down to ~4x the target vertices (for example, ~80k vertices for a 20k target)
-    # This prevents Instant Meshes from choking on massive 800k+ inputs, while
-    # leaving enough geometric detail for a clean retopology.
     extract_cap = profile_data.get('extract_v', target_v * 10)
     target_extract_v = str(extract_cap)
 
@@ -216,40 +213,42 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
         return
 
     # 2. Instant Meshes Pass
-    print("  Running Instant Meshes pass...")
     low_poly_raw_obj = os.path.join(temp_dir, f.replace(".glb", "_low_raw.obj"))
-    if not os.path.exists(instant_meshes_exe):
-        print(f"❌ Error: Instant Meshes executable not found at {instant_meshes_exe}")
-        raise FileNotFoundError(f"Instant Meshes executable not found at {instant_meshes_exe}")
 
-    # Pass the pre-decimated sculpt obj to Instant Meshes to hit targets better
-    # and preserve pure quads.
-    sculpt_obj_path = high_poly_obj.replace(".obj", "_sculpt.obj")
-    if not os.path.exists(sculpt_obj_path):
-        sculpt_obj_path = high_poly_obj
+    if profile_key == "tile":
+        print("  Skipping Instant Meshes pass for 'tile' profile...")
+        # Create a tiny dummy file to satisfy Blender's initial existence check
+        with open(low_poly_raw_obj, 'w') as dummy:
+            dummy.write("# Dummy file for tile profile\n")
+    else:
+        print("  Running Instant Meshes pass...")
+        if not os.path.exists(instant_meshes_exe):
+            print(f"❌ Error: Instant Meshes executable not found at {instant_meshes_exe}")
+            raise FileNotFoundError(f"Instant Meshes executable not found at {instant_meshes_exe}")
 
-    # Instant Meshes generates quads (2 triangles each), and UV unwrapping duplicates
-    # vertices along every seam. To hit the target vertex count in the final glTF,
-    # we must strictly limit Instant Meshes to half the requested vertices.
-    im_target = max(target_v // 2, 100) 
+        sculpt_obj_path = high_poly_obj.replace(".obj", "_sculpt.obj")
+        if not os.path.exists(sculpt_obj_path):
+            sculpt_obj_path = high_poly_obj
 
-    im_cmd = [
-        instant_meshes_exe,
-        "-o", low_poly_raw_obj,
-        "-f", str(im_target), 
-        "-D",                 
-        "-S", "0",            # [FIX] Zero smoothing. Stops the face from melting.
-        "-c", "30",           # [NEW] Forces the algorithm to trace and preserve sharp corners
-        sculpt_obj_path
-    ]
+        # FIXED: Explicitly use the exact requested vertex count
+        im_target = max(target_v, 100) 
 
-    try:
-        # Some versions of instant meshes output to stdout/stderr, so we capture or let it flow
-        subprocess.run(im_cmd, check=True)
-        print("✅ Instant Meshes generated raw low poly model.")
-    except subprocess.CalledProcessError as e:
-        print(f"❌ Error running Instant Meshes: {e}")
-        return False
+        im_cmd = [
+            instant_meshes_exe,
+            "-o", low_poly_raw_obj,
+            "-v", str(im_target), # FIXED: explicitly target vertices
+            "-D",                 
+            "-S", "0",            
+            "-c", "30",           
+            sculpt_obj_path
+        ]
+
+        try:
+            subprocess.run(im_cmd, check=True)
+            print("✅ Instant Meshes generated raw low poly model.")
+        except subprocess.CalledProcessError as e:
+            print(f"❌ Error running Instant Meshes: {e}")
+            return False
 
     # 3. Blender UV Unwrap and Bake Pass
     print("  Running Blender UV Unwrap and Bake pass...")
@@ -265,10 +264,6 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
                 print(f"⚠️ Warning: gltfpack not found at {gltfpack_exe}. Skipping optimization.")
                 shutil.copy(temp_out, final_out)
         else:
-            # Use safer compression for Foundry VTT
-            # -si: Simplification
-            # -noq: No Quantization (this is the key for compatibility)
-            # Removed -c and -cc which cause compression issues
             meshopt_cmd = [gltfpack_exe, "-i", temp_out, "-o", final_out, "-noq"]
             try:
                 subprocess.run(meshopt_cmd, check=True)
