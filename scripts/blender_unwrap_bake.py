@@ -198,9 +198,8 @@ def process():
         bpy.context.view_layer.update()
         
         max_dimension = max(low_obj.dimensions)
-        # SEVERELY reduced ray extrusion ceiling for thin cloth protection
-        calculated_extrusion = max_dimension * 0.005
-        dynamic_extrusion = min(calculated_extrusion, 0.005)
+        calculated_extrusion = max_dimension * 0.01
+        dynamic_extrusion = min(calculated_extrusion, 0.02) # Restored to 2cm max limit
         print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
 
         try:
