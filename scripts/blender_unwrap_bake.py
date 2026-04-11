@@ -198,7 +198,7 @@ def process():
     
     max_dimension = max(low_obj.dimensions)
     calculated_extrusion = max_dimension * 0.002
-    dynamic_extrusion = min(calculated_extrusion, 0.021)
+    dynamic_extrusion = min(calculated_extrusion, 0.005)
     print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
 
     try:
