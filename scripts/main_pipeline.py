@@ -258,7 +258,7 @@ def process_file(f, source_dir, temp_dir, output_dir, blender_exe, instant_meshe
             print(f"⚠️ Warning: gltfpack not found at {gltfpack_exe}. Skipping compression.")
             shutil.copy(temp_out_glb, final_out)
         else:
-            meshopt_cmd = [gltfpack_exe, "-i", temp_out_glb, "-o", final_out, "-noq"]
+            meshopt_cmd = [gltfpack_exe, "-i", temp_out_glb, "-o", final_out, "-noq", "-tw"]
             try:
                 subprocess.run(meshopt_cmd, check=True)
             except subprocess.CalledProcessError as e:
