@@ -197,7 +197,7 @@ def process():
     bpy.context.view_layer.update()
     
     max_dimension = max(low_obj.dimensions)
-    calculated_extrusion = max_dimension * 0.01
+    calculated_extrusion = max_dimension * 0.015
     dynamic_extrusion = min(calculated_extrusion, 0.021)
     print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
 
