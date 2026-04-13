@@ -2,339 +2,6 @@ import bpy
 import os
 import sys
 
-# Manually add the standard Windows Addon path to sys.path
-user_addon_path = os.path.expandvars(r'%APPDATA%\Blender Foundation\Blender\5.0\scripts\addons')
-if user_addon_path not in sys.path:
-    sys.path.append(user_addon_path)
-
-# Ensure the addon is actually enabled
-# Note: Changed from "quad_remesher_1_4" to "quad_remesher"
-addon_name = "quad_remesher"
-
-if addon_name not in bpy.context.preferences.addons:
-    try:
-        bpy.ops.preferences.addon_enable(module=addon_name)
-        print(f"✅ {addon_name} successfully enabled.")
-    except Exception as e:
-        print(f"❌ Could not enable {addon_name}: {e}")
-
-import bmesh
-import argparse
-import urllib.parse
-import json
-import struct
-import time
-
-MERGE_THRESHOLD = 0.0001
-
-# ==========================================
-# SECURITY & VALIDATION
-# ==========================================
-def is_safe_uri(uri):
-    if uri.startswith('data:'):
-        return True
-    decoded_uri = urllib.parse.unquote(uri)
-    if os.path.isabs(decoded_uri):
-        return False
-    if ':' in decoded_uri:
-        return False
-    if decoded_uri.startswith('/') or decoded_uri.startswith('\\'):
-        return False
-    if '..' in decoded_uri.replace('\\', '/').split('/'):
-        return False
-    return True
-
-def validate_gltf_path(filepath):
-    if not os.path.exists(filepath):
-        raise FileNotFoundError(f"File {filepath} not found")
-
-    ext = os.path.splitext(filepath)[1].lower()
-
-    try:
-        if ext == '.glb':
-            with open(filepath, 'rb') as f:
-                magic = f.read(4)
-                if magic != b'glTF':
-                     raise ValueError("Invalid GLB file: missing magic header")
-
-                version = struct.unpack('<I', f.read(4))[0]
-                length = struct.unpack('<I', f.read(4))[0]
-
-                chunk_length = struct.unpack('<I', f.read(4))[0]
-                chunk_type = f.read(4)
-
-                if chunk_type != b'JSON':
-                     raise ValueError("Invalid GLB file: first chunk is not JSON")
-
-                json_data = f.read(chunk_length)
-                try:
-                    data = json.loads(json_data)
-                except json.JSONDecodeError:
-                    raise ValueError("Invalid GLB file: JSON chunk is malformed")
-
-        elif ext == '.gltf':
-             with open(filepath, 'r', encoding='utf-8') as f:
-                try:
-                    data = json.load(f)
-                except json.JSONDecodeError:
-                    raise ValueError("Invalid glTF file: JSON is malformed")
-        else:
-             return True
-
-        if 'buffers' in data:
-            for buffer in data['buffers']:
-                if 'uri' in buffer:
-                    uri = buffer['uri']
-                    if not is_safe_uri(uri):
-                        raise ValueError(f"Unsafe buffer URI detected: {uri}")
-
-        if 'images' in data:
-            for image in data['images']:
-                if 'uri' in image:
-                    uri = image['uri']
-                    if not is_safe_uri(uri):
-                         raise ValueError(f"Unsafe image URI detected: {uri}")
-
-    except Exception as e:
-        raise ValueError(f"Failed to validate glTF file: {e}")
-
-    return True
-
-# ==========================================
-# CLI ARGUMENTS
-# ==========================================
-def build_args():
-    p = argparse.ArgumentParser()
-    p.add_argument("--input", required=True)
-    p.add_argument("--output", required=True)
-    p.add_argument("--target", type=int, default=20000)
-    p.add_argument("--maxtex", type=int, default=2048)
-    p.add_argument("--normalize", type=int, default=1)
-    p.add_argument("--matte", type=int, default=1)
-    return p
-
-# ==========================================
-# PIPELINE EXECUTION
-# ==========================================
-def finish_export(args, high_obj, low_obj, used_decimate):
-    temp_img_path = None
-    if not low_obj and used_decimate:
-        print("❌ Quad Remesher failed to generate mesh. Falling back to Decimate.")
-        low_obj = high_obj.copy()
-        low_obj.data = high_obj.data.copy()
-        bpy.context.collection.objects.link(low_obj)
-        mod = low_obj.modifiers.new(name="Deci", type='DECIMATE')
-        verts_len = max(len(low_obj.data.vertices), 1)
-        mod.ratio = max(args.target / verts_len, 0.05)
-        mod.use_collapse_triangulate = True
-        bpy.ops.object.select_all(action='DESELECT')
-        low_obj.select_set(True)
-        bpy.context.view_layer.objects.active = low_obj
-        bpy.ops.object.modifier_apply(modifier="Deci")
-
-    if not used_decimate:
-        # 1. FIX THE FBX IMPORT DATA
-        print("🔹 Cleaning Quad Remesher FBX geometry...")
-        bpy.ops.object.select_all(action='DESELECT')
-        low_obj.select_set(True)
-        bpy.context.view_layer.objects.active = low_obj
-
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-
-        # Weld exact overlapping vertices from FBX seam splits
-        import bmesh
-        bm = bmesh.from_edit_mesh(low_obj.data)
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=MERGE_THRESHOLD)
-        bmesh.update_edit_mesh(low_obj.data)
-
-        bpy.ops.mesh.customdata_custom_splitnormals_clear() # UNLOCK THE NORMALS
-        bpy.ops.mesh.mark_sharp(clear=True) # Clear explicit sharp edges so shade_smooth works properly across FBX seams
-            # bpy.ops.mesh.normals_make_consistent(inside=False) # Omitted per user override to prevent lighting shards
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # Now that normals are unlocked, this will actually smooth the surface for the bake!
-        bpy.ops.object.shade_smooth()
-
-        # 2. AUTO-UV UNWRAP
-        print("🔹 Auto-Unwrapping UVs...")
-        bpy.ops.object.mode_set(mode='EDIT')
-        bpy.ops.mesh.select_all(action='SELECT')
-        # Smart project with 89 degree limit (~1.55 radians) to minimize fragmentation and maximize contiguous texel density
-        bpy.ops.uv.smart_project(angle_limit=1.55, margin_method='FRACTION', island_margin=0.01)
-        bpy.ops.object.mode_set(mode='OBJECT')
-
-        # 2.5 PREPARE HIGH-POLY FOR EMIT BAKE
-        print("🔹 Converting High-Poly materials to Emission for pure Albedo bake...")
-        for mat in high_obj.data.materials:
-            if mat and mat.use_nodes:
-                mat_nodes = mat.node_tree.nodes
-                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
-                mat_output = next((n for n in mat_nodes if n.type == 'OUTPUT_MATERIAL'), None) or mat_nodes.get("Material Output")
-
-                if mat_bsdf and mat_output:
-                    # Create emission node to bypass all PBR lighting/metallic issues during bake
-                    emit_node = mat_nodes.new('ShaderNodeEmission')
-
-                    # See if anything is connected to Base Color
-                    base_color_input = mat_bsdf.inputs.get('Base Color')
-                    if base_color_input and base_color_input.is_linked:
-                        link = base_color_input.links[0]
-                        mat.node_tree.links.new(link.from_socket, emit_node.inputs['Color'])
-                    else:
-                        emit_node.inputs['Color'].default_value = base_color_input.default_value if base_color_input else (1.0, 1.0, 1.0, 1.0)
-
-                    # Connect emission directly to output
-                    mat.node_tree.links.new(emit_node.outputs['Emission'], mat_output.inputs['Surface'])
-
-        # 3. HIGH-TO-LOW POLY BAKING
-        # Bake at a higher resolution (e.g. 2x) then scale down, or simply use the requested resolution
-        # But for maximum crispness, we'll let Blender bake at 2048 or whatever maxtex is.
-        # However, to avoid blockiness due to anti-aliasing issues at the edge of UV islands, we can bake
-        # at double resolution and let the user/exporter downsample it, or just stick to maxtex since our UV map
-        # is now optimized. Let's bake at a fixed double resolution to avoid blockiness, then scale the image down.
-        bake_res = args.maxtex * 2
-        print(f"🔹 Baking High-Def Textures at ({bake_res}x{bake_res}) for anti-aliasing, will downscale to {args.maxtex}...")
-        bpy.context.scene.render.engine = 'CYCLES'
-        bpy.context.scene.cycles.device = 'GPU'
-        bpy.context.scene.cycles.samples = 16
-
-        baked_image = bpy.data.images.new("Baked_Texture", width=bake_res, height=bake_res)
-        baked_mat = bpy.data.materials.new(name="Token_Material")
-        baked_mat.use_nodes = True
-
-        nodes = baked_mat.node_tree.nodes
-        bsdf = next((n for n in nodes if n.type == 'BSDF_PRINCIPLED'), None) or nodes.get("Principled BSDF") or nodes.new('ShaderNodeBsdfPrincipled')
-        tex_node = nodes.new('ShaderNodeTexImage')
-        tex_node.image = baked_image
-        nodes.active = tex_node
-        tex_node.select = True
-
-        # We removed the ShaderNodeUVMap here because unconfigured UV maps break the glTF exporter.
-        # The exporter will automatically use the active UV map for the ShaderNodeTexImage.
-
-        high_obj.hide_viewport = False
-        high_obj.hide_set(False)
-
-        low_obj.data.materials.clear()
-        low_obj.data.materials.append(baked_mat)
-
-        bpy.ops.object.select_all(action='DESELECT')
-        high_obj.select_set(True)
-        low_obj.select_set(True)
-        bpy.context.view_layer.objects.active = low_obj
-
-        bpy.context.scene.render.bake.use_selected_to_active = True
-
-
-        # Extrude the ray-cast origin outward by 3% of the 1.0 unit model scale
-        # to ensure rays begin *outside* any high-poly bulging geometry (belts, beards).
-        # Set max_ray_distance to cast deep enough inward to hit recessed areas.
-        bpy.context.scene.render.bake.cage_extrusion = 0.03
-        bpy.context.scene.render.bake.max_ray_distance = 0.05
-
-        # Explicitly configure the diffuse bake to ONLY capture the Base Color (Albedo).
-        # Without disabling Direct and Indirect lighting, the headless bake will evaluate the scene's
-        # actual lighting (which is zero) and output a black/grey image.
-        bpy.context.scene.render.bake.use_pass_direct = False
-        bpy.context.scene.render.bake.use_pass_indirect = False
-        bpy.context.scene.render.bake.use_pass_color = True
-
-        try:
-            # Bake EMIT to capture pure Albedo bypassing all lighting and PBR calculations
-            bpy.ops.object.bake(type='EMIT', use_selected_to_active=True, margin=16, margin_type='EXTEND')
-        except Exception as e:
-            print(f"❌ Bake Error: {e}")
-            bpy.ops.wm.quit_blender()
-
-        # Scale the baked image down to the target resolution for antialiasing
-        print(f"🔹 Downscaling baked texture to {args.maxtex}x{args.maxtex}...")
-        baked_image.scale(args.maxtex, args.maxtex)
-
-        # Save the baked image to a temporary file IN THE SAME DIRECTORY as the output GLB.
-        # This is CRITICAL for the headless glTF exporter because it cannot resolve relative paths
-        # from the OS temp directory when the .blend file is unsaved, causing it to drop the texture entirely.
-        out_dir = os.path.dirname(os.path.abspath(args.output))
-        temp_img_path = os.path.join(out_dir, f"Baked_Texture_{int(time.time())}.png")
-        baked_image.filepath_raw = temp_img_path
-        baked_image.file_format = 'PNG'
-
-        baked_image.save()
-        print(f"🔹 Saved baked texture to temporary path: {temp_img_path}")
-
-        # Now re-load it from disk to ensure it behaves exactly like an external texture for glTF export
-        loaded_image = bpy.data.images.load(temp_img_path)
-
-        # Force the loaded image to be packed into the current blend file memory.
-        # This guarantees the glTF exporter embeds it, bypassing any external path resolution issues.
-        loaded_image.pack()
-        tex_node.image = loaded_image
-
-        # Link the texture AFTER baking to prevent circular dependency errors
-        baked_mat.node_tree.links.new(tex_node.outputs['Color'], bsdf.inputs['Base Color'])
-
-    # 4. MATTE FINISH & ALIGNMENT
-    print("🔹 Applying Matte Finish and Aligning...")
-    # Safely hide the high-poly so it doesn't export
-    high_obj.select_set(False)
-    high_obj.hide_viewport = True
-    high_obj.hide_render = True
-
-    if args.matte == 1:
-        for mat in low_obj.data.materials:
-            if mat.use_nodes:
-                mat_nodes = mat.node_tree.nodes
-                mat_bsdf = next((n for n in mat_nodes if n.type == 'BSDF_PRINCIPLED'), None) or mat_nodes.get("Principled BSDF")
-                if mat_bsdf:
-                    if 'Metallic' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Metallic'].default_value = 0.0
-                        for link in mat_bsdf.inputs['Metallic'].links: mat.node_tree.links.remove(link)
-                    if 'Roughness' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Roughness'].default_value = 0.8
-                        for link in mat_bsdf.inputs['Roughness'].links: mat.node_tree.links.remove(link)
-                    if 'Coat Weight' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Coat Weight'].default_value = 0.01
-                    elif 'Coat' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Coat'].default_value = 0.01
-
-                    # Force Specular to 0.0 to prevent any default shininess!
-                    if 'Specular IOR Level' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Specular IOR Level'].default_value = 0.0
-                    elif 'Specular' in mat_bsdf.inputs:
-                        mat_bsdf.inputs['Specular'].default_value = 0.0
-
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-
-    verts = list(low_obj.data.vertices)
-    if verts:
-        mw = low_obj.matrix_world
-        bottom_z = min((mw @ v.co).z for v in verts)
-        low_obj.location.z -= bottom_z
-        bpy.ops.object.transform_apply(location=True)
-
-    # 5. EXPORT
-    print("🔹 Exporting Final VTT Token...")
-    bpy.ops.object.select_all(action='DESELECT')
-    low_obj.select_set(True)
-
-    bpy.ops.export_scene.gltf(
-        filepath=args.output,
-        export_format='GLB',
-        export_apply=True,
-        use_selection=True
-    )
-    print("✅ Success!")
-
-    if temp_img_path and os.path.exists(temp_img_path):
-        try:
-            os.remove(temp_img_path)
-            print(f"🔹 Cleaned up temporary texture: {temp_img_path}")
-        except Exception as e:
-            print(f"⚠️ Failed to remove temporary texture: {e}")
-
-    bpy.ops.wm.quit_blender()
-
 def process():
     try:
         idx = sys.argv.index("--")
@@ -342,185 +9,338 @@ def process():
     except ValueError:
         argv = []
 
-    args = build_args().parse_args(argv)
+    if len(argv) < 4:
+        print("Usage: blender --background --python blender_unwrap_bake.py -- <high_obj> <low_raw> <high_tex> <output_glb> <max_res> <target_v> <token_type>")
+        sys.exit(1)
 
-    # 1. CLEAN SCENE & IMPORT HIGH-POLY
+    high_poly_obj = argv[0]
+    low_poly_raw_obj = argv[1]
+    high_poly_tex = argv[2]
+    output_glb = argv[3]
+    max_res = int(argv[4]) if len(argv) > 4 else 1024
+    target_v = int(argv[5]) if len(argv) > 5 else 20000
+    
+    # Catch the 7th argument (the profile choice from your main menu)
+    token_type = str(argv[6]) if len(argv) > 6 else "1"
+
+    # 1. CLEAN SCENE
     bpy.ops.object.select_all(action='SELECT')
     bpy.ops.object.delete()
 
-    if not os.path.exists(args.input):
-        print(f"Error: Input file {args.input} does not exist.")
+    if not os.path.exists(low_poly_raw_obj):
+        print(f"Error: Input file {low_poly_raw_obj} does not exist.")
         sys.exit(1)
-        return
 
-    try:
-        validate_gltf_path(args.input)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
+    # 2. IMPORT HIGH POLY
+    print(f"🔹 Importing High-Poly: {high_poly_obj}")
+    if not os.path.exists(high_poly_obj):
+        print(f"Error: High-poly file {high_poly_obj} does not exist.")
         sys.exit(1)
-        return
-    except ValueError as e:
-        print(f"Security Error: {e}")
+
+    bpy.ops.wm.obj_import(
+        filepath=high_poly_obj,
+        forward_axis='Y',
+        up_axis='Z'
+    )
+
+    high_poly_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
+    if not high_poly_objs:
+        print("❌ No mesh objects found in high-poly OBJ.")
         sys.exit(1)
-        return
 
-    bpy.ops.import_scene.gltf(filepath=args.input)
+    for obj in high_poly_objs:
+        obj.name = "HighPoly_" + obj.name
+        obj.hide_render = False
 
-    mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH']
-    if not mesh_objs:
-        print("❌ No mesh objects found in GLB.")
-        sys.exit(1)
-        return
+    # 3 & 4. GENERATE OR IMPORT LOW POLY
+    if token_type == "3":
+        print("🔹 Tile Profile Detected: Bypassing Instant Meshes. Using Planar Decimation on High-Poly...")
 
-    # Join into a single High-Poly master object
-    bpy.ops.object.select_all(action='DESELECT')
-    for obj in mesh_objs:
-        obj.select_set(True)
-    bpy.context.view_layer.objects.active = mesh_objs[0]
-    bpy.ops.object.join()
-    high_obj = bpy.context.view_layer.objects.active
-    high_obj.name = "HighPoly_Master"
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in high_poly_objs:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = high_poly_objs[0]
+        bpy.ops.object.duplicate()
 
-    # --- JULES: INSERT SURGICAL FIX HERE ---
-    if args.normalize == 1:
-        # Center the origin and normalize to exactly 1.0 unit
-        bpy.ops.object.origin_set(type='ORIGIN_GEOMETRY', center='BOUNDS')
-        high_obj.location = (0, 0, 0)
+        mesh_objs = [obj for obj in bpy.context.selected_objects if obj.type == 'MESH']
+        bpy.context.view_layer.objects.active = mesh_objs[0]
+        if len(mesh_objs) > 1:
+            bpy.ops.object.join()
 
-        # Force a dependency graph update to ensure dimensions are accurate after the origin change
-        bpy.context.view_layer.update()
+        low_obj = bpy.context.view_layer.objects.active
+        low_obj.name = "LowPoly_Unwrapped"
+        low_obj.hide_render = False
 
-        dims = list(high_obj.dimensions) if hasattr(high_obj.dimensions, '__iter__') else []
-        if dims:
-            max_dim = max(dims)
-            if max_dim > 0:
-                scale_factor = 1.0 / max_dim
-                high_obj.scale = (scale_factor, scale_factor, scale_factor)
+        bpy.ops.object.modifier_add(type='DECIMATE')
+        decimate_mod = low_obj.modifiers["Decimate"]
+        decimate_mod.decimate_type = 'DISSOLVE'
+        decimate_mod.angle_limit = 0.0872665  # Approx 5 degrees in radians
+        bpy.ops.object.modifier_apply(modifier="Decimate")
 
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    # ---------------------------------------
+        bpy.ops.object.modifier_add(type='TRIANGULATE')
+        bpy.ops.object.modifier_apply(modifier="Triangulate")
 
-    # Check for non-manifold geometry and harden it with Voxel Remesh if needed
+    else:
+        print(f"🔹 Importing Low-Poly: {low_poly_raw_obj}")
+        bpy.ops.wm.obj_import(
+            filepath=low_poly_raw_obj,
+            forward_axis='Y',
+            up_axis='Z'
+        )
+
+        mesh_objs = [obj for obj in bpy.data.objects if obj.type == 'MESH' and obj not in high_poly_objs]
+        if not mesh_objs:
+            print("❌ No mesh objects found in low-poly OBJ.")
+            sys.exit(1)
+
+        bpy.ops.object.select_all(action='DESELECT')
+        for obj in mesh_objs:
+            obj.select_set(True)
+        bpy.context.view_layer.objects.active = mesh_objs[0]
+        if len(mesh_objs) > 1:
+            bpy.ops.object.join()
+        low_obj = bpy.context.view_layer.objects.active
+        low_obj.name = "LowPoly_Unwrapped"
+        low_obj.hide_render = False
+
+        bpy.ops.object.mode_set(mode='EDIT')
+        import bmesh
+        bm = bmesh.from_edit_mesh(low_obj.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
+        bmesh.update_edit_mesh(low_obj.data)
+
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.mark_sharp(clear=True)
+        bpy.ops.mesh.quads_convert_to_tris(quad_method='BEAUTY', ngon_method='BEAUTY')
+
+        print("🔹 Obliterating corrupted normals...")
+        bpy.ops.mesh.set_normals_from_faces()
+        bpy.ops.mesh.normals_make_consistent(inside=False)
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+    # 5. UNWRAP LOW POLY (Character ONLY - Peak Resolution)
+    print("🔹 Auto-Unwrapping UVs...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    import bmesh
-    bm = bmesh.from_edit_mesh(bpy.context.edit_object.data)
-
-    # Analyze non-manifold edges
-    non_manifold_edges = [e for e in bm.edges if not e.is_manifold]
-    has_non_manifold = len(non_manifold_edges) > 0
-    verts_before = len(bm.verts)
-
+    bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='SCALED', island_margin=0.01)
     bpy.ops.object.mode_set(mode='OBJECT')
-    print(f"🔹 Preserving all {verts_before} high-poly vertices for baking.")
 
-    # Create a hardened duplicate specifically for Quad Remesher to process
-    # This prevents the original high-poly from losing UVs/Textures needed for baking
-    harden_obj = high_obj.copy()
-    harden_obj.data = high_obj.data.copy()
-    bpy.context.collection.objects.link(harden_obj)
-    harden_obj.name = "HighPoly_Hardened"
+    # 6. SMOOTH NORMALS
+    print("🔹 Applying smooth shading...")
+    bpy.ops.object.mode_set(mode='OBJECT')
+    bpy.ops.object.shade_smooth()
+    
+    bpy.context.view_layer.objects.active = low_obj
+    try:
+        bpy.ops.mesh.customdata_custom_splitnormals_clear()
+    except Exception:
+        pass
 
-    if has_non_manifold:
-        print(f"⚠️ Non-manifold geometry detected ({len(non_manifold_edges)} edges). Hardening geometry via Voxel Remesh...")
-        bpy.context.view_layer.objects.active = harden_obj
-        mod = harden_obj.modifiers.new(name="VoxelRemesh", type='REMESH')
-        mod.mode = 'VOXEL'
-        mod.voxel_size = 0.005 # Detailed enough for a 1.0 unit model
-        bpy.ops.object.modifier_apply(modifier="VoxelRemesh")
+    # 7. SETUP CYCLES & HIGH POLY MATERIAL
+    print("🔹 Setting up Cycles and High-Poly Material...")
+    bpy.context.scene.render.engine = 'CYCLES'
+    try:
+        bpy.context.scene.cycles.device = 'GPU'
+        prefs = bpy.context.preferences.addons['cycles'].preferences
+        prefs.compute_device_type = 'CUDA'
+        prefs.get_devices()
+        for d in prefs.devices:
+            d.use = True
+    except Exception:
+        pass 
 
-    # 2. THE SCULPT (Quad Remesher)
-    print(f"🔹 Activating Quad Remesher (Target: {args.target} faces)...")
-    import addon_utils
-    qr_module_name = 'quad_remesher'
-    for mod in addon_utils.modules():
-        if mod.__name__.startswith('quad_remesher'):
-            qr_module_name = mod.__name__
-            break
+    high_mat = bpy.data.materials.new(name="HighPoly_Mat")
+    high_mat.use_nodes = True
+    nodes = high_mat.node_tree.nodes
+    nodes.clear()
 
-    bpy.ops.preferences.addon_enable(module=qr_module_name)
+    emission_node = nodes.new('ShaderNodeEmission')
+    mat_output = nodes.new('ShaderNodeOutputMaterial')
+    high_mat.node_tree.links.new(emission_node.outputs['Emission'], mat_output.inputs['Surface'])
 
-    # Configure Quad Remesher settings
-    # Since Quad Remesher interprets target as quads (2 triangles), and
-    # glTF inherently splits vertices at UV seams, we divide by 2 to prevent overshooting the target
-    bpy.context.scene.qremesher.target_count = max(args.target // 2, 100)
-    bpy.context.scene.qremesher.use_materials = False
+    if high_poly_tex and os.path.exists(high_poly_tex):
+        tex_node = nodes.new('ShaderNodeTexImage')
+        loaded_image = bpy.data.images.load(high_poly_tex)
+        tex_node.image = loaded_image
+        high_mat.node_tree.links.new(tex_node.outputs['Color'], emission_node.inputs['Color'])
 
-    # Attempt to disable normal/hard-edge splitting to prevent shattered geometry
-    if hasattr(bpy.context.scene.qremesher, 'use_normals'):
-        bpy.context.scene.qremesher.use_normals = False
-    if hasattr(bpy.context.scene.qremesher, 'use_normals_splitting'):
-        bpy.context.scene.qremesher.use_normals_splitting = False
+    for obj in high_poly_objs:
+        obj.data.materials.clear()
+        obj.data.materials.append(high_mat)
 
-    # Ensure Hardened Object is active and selected for Quad Remesher
+    # 8. LOW POLY MATERIAL SETUP
+    print("🔹 Setting up Low-Poly Material for Bake...")
+    low_mat = bpy.data.materials.new(name="LowPoly_Mat")
+    low_mat.use_nodes = True
+    low_nodes = low_mat.node_tree.nodes
+
+    baked_image = bpy.data.images.new(name="Baked_Diffuse", width=max_res, height=max_res, alpha=True)
+    bake_tex_node = low_nodes.new('ShaderNodeTexImage')
+    bake_tex_node.image = baked_image
+
+    for node in low_nodes: node.select = False
+    bake_tex_node.select = True
+    low_nodes.active = bake_tex_node
+
+    low_obj.data.materials.clear()
+    low_obj.data.materials.append(low_mat)
+
+    # 9. EXECUTE BAKE
+    print("🔹 Executing Cycles Bake...")
     bpy.ops.object.select_all(action='DESELECT')
-    harden_obj.select_set(True)
-    bpy.context.view_layer.objects.active = harden_obj
+    for obj in high_poly_objs:
+        obj.select_set(True)
 
-    # Execute Remesh
-    used_decimate = False
-    low_obj = None
+    low_obj.select_set(True)
+    bpy.context.view_layer.objects.active = low_obj
 
-    original_name = bpy.context.active_object.name
-    retopo_name = "Retopo_" + original_name
+    bpy.context.view_layer.update()
+    
+    max_dimension = max(low_obj.dimensions)
+    calculated_extrusion = max_dimension * 0.008
+    dynamic_extrusion = min(calculated_extrusion, 0.012)
+    print(f"🔹 Dynamic Cage Extrusion calculated at: {dynamic_extrusion:.4f}m")
 
     try:
-        bpy.ops.qremesher.remesh()
-        print("⏳ Waiting for Exoside engine to finish remeshing...")
-
-        # Wait up to 120 seconds for the new object to appear
-        timeout = time.time() + 120
-
-        def check_retopo():
-            nonlocal low_obj, used_decimate
-            if retopo_name in bpy.data.objects:
-                print("✅ Quad Remesher successful!")
-                low_obj = bpy.data.objects[retopo_name]
-
-                # Cleanup the hardened object since Quad Remesher is done with it
-                bpy.data.objects.remove(harden_obj, do_unlink=True)
-
-                # Ensure the new object is the active one for the export phase
-                bpy.context.view_layer.objects.active = low_obj
-                finish_export(args, high_obj, low_obj, used_decimate=False)
-                return None
-
-            if time.time() >= timeout:
-                print("❌ Quad Remesher timed out waiting for mesh.")
-                used_decimate = True
-                finish_export(args, high_obj, low_obj=None, used_decimate=True)
-                return None
-
-            return 1.0 # Check again in 1 second
-
-        if not hasattr(bpy.app, 'timers'):
-            # Fallback for mocking/testing environments without timers
-            while time.time() < timeout:
-                if retopo_name in bpy.data.objects:
-                    low_obj = bpy.data.objects[retopo_name]
-                    bpy.context.view_layer.objects.active = low_obj
-                    break
-                time.sleep(0.5)
-            if not low_obj:
-                used_decimate = True
-                bpy.data.objects.remove(harden_obj, do_unlink=True)
-            finish_export(args, high_obj, low_obj, used_decimate)
-        else:
-            bpy.app.timers.register(check_retopo)
-
-    except RuntimeError as e:
-        bpy.data.objects.remove(harden_obj, do_unlink=True)
-        if "expected class QREMESHER_OT_remesh" in str(e):
-            print("⚠️ Caught known Quad Remesher cancel bug, continuing pipeline.")
-            used_decimate = True
-            finish_export(args, high_obj, low_obj=None, used_decimate=True)
-        else:
-            raise e
+        bpy.ops.object.bake(
+            type='EMIT',
+            use_selected_to_active=True,
+            use_cage=True,
+            cage_extrusion=dynamic_extrusion,
+            margin=8,
+            margin_type='EXTEND'
+        )
+        print("✅ Cycles bake complete!")
     except Exception as e:
-        bpy.data.objects.remove(harden_obj, do_unlink=True)
-        print(f"❌ Error during remeshing: {e}")
-        used_decimate = True
-        finish_export(args, high_obj, low_obj=None, used_decimate=True)
+        print(f"❌ Cycles Bake Error: {e}")
+        sys.exit(1)
+
+    # 10. SAVE TEXTURE & APPLY MATTE FINISH
+    print("🔹 Saving Texture and Applying Matte Finish...")
+    actual_baked_png = output_glb.replace('.glb', '_baked.png')
+    baked_image.filepath_raw = actual_baked_png
+    baked_image.file_format = 'PNG'
+    baked_image.save()
+
+    loaded_image = bpy.data.images.load(actual_baked_png)
+    loaded_image.pack()
+    bake_tex_node.image = loaded_image
+
+    bsdf = next((n for n in low_nodes if n.type == 'BSDF_PRINCIPLED'), None) or low_nodes.get("Principled BSDF") or low_nodes.new('ShaderNodeBsdfPrincipled')
+
+    if 'Base Color' in bsdf.inputs:
+        base_color_input = bsdf.inputs['Base Color']
+        while base_color_input.links:
+            low_mat.node_tree.links.remove(base_color_input.links[0])
+
+    low_mat.node_tree.links.new(bake_tex_node.outputs['Color'], bsdf.inputs['Base Color'])
+
+    if 'Metallic' in bsdf.inputs: bsdf.inputs['Metallic'].default_value = 0.0
+    if 'Roughness' in bsdf.inputs: bsdf.inputs['Roughness'].default_value = 0.8
+    if 'Coat Weight' in bsdf.inputs: bsdf.inputs['Coat Weight'].default_value = 0.01
+    elif 'Coat' in bsdf.inputs: bsdf.inputs['Coat'].default_value = 0.01
+    if 'Specular IOR Level' in bsdf.inputs: bsdf.inputs['Specular IOR Level'].default_value = 0.0
+    elif 'Specular' in bsdf.inputs: bsdf.inputs['Specular'].default_value = 0.0
+
+    # 11. ATTACH MASTER BASE (POST-BAKE)
+    if token_type == "3":
+        print("🔹 Profile 3 (Tile/Scenery) selected. Skipping master base attachment.")
+        
+        print("🔹 Centering prop geometry...")
+        bpy.context.view_layer.objects.active = low_obj
+        bpy.context.view_layer.update() 
+        
+        bound_z = [v[2] for v in low_obj.bound_box]
+        mesh_bottom_z_local = min(bound_z)
+
+        vertices = low_obj.data.vertices
+        total_verts = len(vertices)
+        if total_verts > 0:
+            center_x = sum(v.co.x for v in vertices) / total_verts
+            center_y = sum(v.co.y for v in vertices) / total_verts
+        else:
+            center_x, center_y = 0.0, 0.0
+
+        low_obj.location.x = -center_x
+        low_obj.location.y = -center_y
+        low_obj.location.z = -mesh_bottom_z_local 
+        
+    else:
+        print(f"🔹 Character Profile ({token_type}) detected. Attaching Master Base...")
+        base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
+
+        if os.path.exists(base_master_path):
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.ops.import_scene.gltf(filepath=base_master_path)
+            
+            # Identify the newly imported base object
+            base_obj = None
+            for obj in bpy.context.selected_objects:
+                if obj.type == 'MESH' and obj != low_obj:
+                    base_obj = obj
+                    break
+            
+            if base_obj:
+                bpy.context.view_layer.objects.active = low_obj
+                bpy.context.view_layer.update() 
+                
+                bound_z = [v[2] for v in low_obj.bound_box]
+                mesh_bottom_z_local = min(bound_z)
+
+                vertices = low_obj.data.vertices
+                total_verts = len(vertices)
+                if total_verts > 0:
+                    center_x = sum(v.co.x for v in vertices) / total_verts
+                    center_y = sum(v.co.y for v in vertices) / total_verts
+                else:
+                    center_x, center_y = 0.0, 0.0
+
+                low_obj.location.x = -center_x
+                low_obj.location.y = -center_y
+                low_obj.location.z = 0.05 - mesh_bottom_z_local
+                
+                bpy.ops.object.select_all(action='DESELECT')
+                low_obj.select_set(True)
+                base_obj.select_set(True)
+                
+                bpy.context.view_layer.objects.active = low_obj
+                bpy.ops.object.join()
+                print("✅ Master Base attached and token unified!")
+        else:
+            print(f"⚠️ Warning: Master base not found at {base_master_path}. Exporting baseless.")
+
+
+    # 12. EXPORT FINAL FILES
+    print("🔹 Exporting Final VTT Token and Substance FBX...")
+    bpy.ops.object.select_all(action='DESELECT')
+
+    for obj in high_poly_objs:
+        obj.hide_viewport = True
+        obj.hide_render = True
+        obj.select_set(False)
+
+    low_obj.select_set(True)
+
+    # Main GLB Export (Fully textured and ready for VTT)
+    bpy.ops.export_scene.gltf(
+        filepath=output_glb,
+        export_format='GLB',
+        export_apply=True,
+        use_selection=True
+    )
+    
+    # Secondary FBX Export (For optional Substance Painter use)
+    output_fbx = output_glb.replace('.glb', '.fbx')
+    bpy.ops.export_scene.fbx(
+        filepath=output_fbx,
+        use_selection=True,
+        apply_scale_options='FBX_SCALE_ALL'
+    )
+    
+    print("✅ Success! Both .glb and .fbx generated.")
+
+    bpy.ops.wm.save_as_mainfile(filepath=output_glb.replace('.glb', '_debug.blend'))
+    bpy.ops.wm.quit_blender()
 
 if __name__ == "__main__":
     process()
