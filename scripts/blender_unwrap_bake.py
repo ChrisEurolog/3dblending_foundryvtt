@@ -122,7 +122,7 @@ def process():
     print("🔹 Auto-Unwrapping UVs...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
-    bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='SCALED', island_margin=0.01)
+    bpy.ops.uv.smart_project(angle_limit=1.15, margin_method='SCALED', island_margin=0.001)
     bpy.ops.object.mode_set(mode='OBJECT')
 
     # 6. SMOOTH NORMALS
