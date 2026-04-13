@@ -118,7 +118,76 @@ def process():
         bpy.ops.mesh.normals_make_consistent(inside=False)
         bpy.ops.object.mode_set(mode='OBJECT')
 
-    # 5. UNWRAP LOW POLY
+    # ---------------------------------------------------------
+    # 4.5 ALIGNMENT & ATTACH MASTER BASE (PRE-UNWRAP)
+    # ---------------------------------------------------------
+    print("🔹 Aligning geometry and attaching Master Base...")
+    bpy.context.view_layer.objects.active = low_obj
+    bpy.context.view_layer.update() 
+    
+    bound_z = [v[2] for v in low_obj.bound_box]
+    mesh_bottom_z_local = min(bound_z)
+
+    vertices = low_obj.data.vertices
+    total_verts = len(vertices)
+    if total_verts > 0:
+        center_x = sum(v.co.x for v in vertices) / total_verts
+        center_y = sum(v.co.y for v in vertices) / total_verts
+    else:
+        center_x, center_y = 0.0, 0.0
+
+    # Calculate exact offsets needed
+    offset_x = -center_x
+    offset_y = -center_y
+    offset_z = (0.05 - mesh_bottom_z_local) if token_type != "3" else (-mesh_bottom_z_local)
+
+    # Move Low Poly
+    low_obj.location.x = offset_x
+    low_obj.location.y = offset_y
+    low_obj.location.z = offset_z
+
+    # Move High Poly to match perfectly so the bake doesn't miss
+    for h_obj in high_poly_objs:
+        h_obj.location.x += offset_x
+        h_obj.location.y += offset_y
+        h_obj.location.z += offset_z
+
+    # Apply transforms so the mesh data is physically locked in place
+    bpy.ops.object.select_all(action='DESELECT')
+    low_obj.select_set(True)
+    for h_obj in high_poly_objs:
+        h_obj.select_set(True)
+    bpy.ops.object.transform_apply(location=True, rotation=False, scale=False)
+
+    # Attach base if it is a character profile
+    if token_type != "3":
+        base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
+        if os.path.exists(base_master_path):
+            bpy.ops.object.select_all(action='DESELECT')
+            bpy.ops.import_scene.gltf(filepath=base_master_path)
+            
+            # Identify the newly imported base object
+            base_obj = None
+            for obj in bpy.context.selected_objects:
+                if obj.type == 'MESH' and obj != low_obj:
+                    base_obj = obj
+                    break
+            
+            if base_obj:
+                bpy.ops.object.select_all(action='DESELECT')
+                low_obj.select_set(True)
+                base_obj.select_set(True)
+                
+                bpy.context.view_layer.objects.active = low_obj
+                bpy.ops.object.join()
+                
+                low_obj.name = "LowPoly_Unwrapped"
+                low_obj.data.name = "LowPoly_Unwrapped_Mesh"
+                print("✅ Master Base attached and token unified!")
+        else:
+            print(f"⚠️ Warning: Master base not found at {base_master_path}. Proceeding baseless.")
+
+    # 5. UNWRAP LOW POLY (Now includes the attached base)
     print("🔹 Auto-Unwrapping UVs...")
     bpy.ops.object.mode_set(mode='EDIT')
     bpy.ops.mesh.select_all(action='SELECT')
@@ -216,7 +285,7 @@ def process():
         sys.exit(1)
 
     # 10. SAVE TEXTURE & APPLY MATTE FINISH
-    print("🔹 Saving Texture, Applying Matte Finish and Aligning...")
+    print("🔹 Saving Texture and Applying Matte Finish...")
     actual_baked_png = output_glb.replace('.glb', '_baked.png')
     baked_image.filepath_raw = actual_baked_png
     baked_image.file_format = 'PNG'
@@ -241,69 +310,6 @@ def process():
     elif 'Coat' in bsdf.inputs: bsdf.inputs['Coat'].default_value = 0.01
     if 'Specular IOR Level' in bsdf.inputs: bsdf.inputs['Specular IOR Level'].default_value = 0.0
     elif 'Specular' in bsdf.inputs: bsdf.inputs['Specular'].default_value = 0.0
-
-    # 11. ATTACH MASTER BASE
-    if token_type == "3":
-        print("🔹 Profile 3 (Tile/Scenery) selected. Skipping master base attachment.")
-        
-        print("🔹 Centering prop geometry...")
-        bpy.context.view_layer.objects.active = low_obj
-        bpy.context.view_layer.update() 
-        
-        bound_z = [v[2] for v in low_obj.bound_box]
-        mesh_bottom_z_local = min(bound_z)
-
-        vertices = low_obj.data.vertices
-        total_verts = len(vertices)
-        if total_verts > 0:
-            center_x = sum(v.co.x for v in vertices) / total_verts
-            center_y = sum(v.co.y for v in vertices) / total_verts
-        else:
-            center_x, center_y = 0.0, 0.0
-
-        low_obj.location.x = -center_x
-        low_obj.location.y = -center_y
-        low_obj.location.z = -mesh_bottom_z_local 
-        
-    else:
-        print(f"🔹 Character Profile ({token_type}) detected. Attaching Master Base...")
-        base_master_path = os.path.abspath(os.path.join("assets", "bases", "base_master.glb"))
-
-        if os.path.exists(base_master_path):
-            bpy.ops.object.select_all(action='DESELECT')
-            bpy.ops.import_scene.gltf(filepath=base_master_path)
-            base_objs = bpy.context.selected_objects
-            
-            if base_objs:
-                base_obj = base_objs[0]
-                
-                bpy.context.view_layer.objects.active = low_obj
-                bpy.context.view_layer.update() 
-                
-                bound_z = [v[2] for v in low_obj.bound_box]
-                mesh_bottom_z_local = min(bound_z)
-
-                vertices = low_obj.data.vertices
-                total_verts = len(vertices)
-                if total_verts > 0:
-                    center_x = sum(v.co.x for v in vertices) / total_verts
-                    center_y = sum(v.co.y for v in vertices) / total_verts
-                else:
-                    center_x, center_y = 0.0, 0.0
-
-                low_obj.location.x = -center_x
-                low_obj.location.y = -center_y
-                low_obj.location.z = 0.05 - mesh_bottom_z_local
-                
-                bpy.ops.object.select_all(action='DESELECT')
-                low_obj.select_set(True)
-                base_obj.select_set(True)
-                
-                bpy.context.view_layer.objects.active = low_obj
-                bpy.ops.object.join()
-                print("✅ Master Base attached and token unified!")
-        else:
-            print(f"⚠️ Warning: Master base not found at {base_master_path}. Exporting baseless.")
 
     # 12. EXPORT FINAL FILES
     print("🔹 Exporting Final VTT Token and Substance FBX...")
