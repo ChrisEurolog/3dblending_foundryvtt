@@ -159,7 +159,13 @@ def get_files_to_process(mode, args_input, source_dir):
 def unwrap_and_bake(blender_exe, script_dir, f, high_poly_obj, low_poly_raw_obj, high_poly_tex, temp_base, temp_out_glb, max_res, target_v, profile_key):
     blender_unwrap = os.path.join(script_dir, "blender_unwrap_bake.py")
 
-    token_type = "3" if profile_key == "tile" else "1"
+    profile_to_token_type = {
+        "token_production": "1",
+        "token_hobby": "2",
+        "tile": "3",
+        "archive": "4"
+    }
+    token_type = profile_to_token_type.get(profile_key, "1")
 
     # FIXED: Removed 'temp_base' from this list so it passes exactly 7 arguments
     unwrap_cmd = [
